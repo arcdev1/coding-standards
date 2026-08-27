@@ -38,8 +38,8 @@ section; the principles carry, the specifics may not.
 
 - **Writing code:** read [§0](#0-first-principle-idiomatic-stack-first) and the
   section for the layer you're touching before you start.
-- **Reviewing code:** run the diff against the [review checklist](#13-review-checklist)
-  and the [code-smell baseline](#12-code-smell-baseline), on top of the per-layer
+- **Reviewing code:** run the diff against the [review checklist](#14-review-checklist)
+  and the [code-smell baseline](#13-code-smell-baseline), on top of the per-layer
   rules.
 - **Skip what tooling enforces.** Formatting, import order, and the compiler
   errors in [§2](#2-formatting-lint-and-types-automated) are caught by the
@@ -138,7 +138,7 @@ export default { semi: false, singleQuote: true, trailingComma: 'all' }
 `@tanstack/eslint-config`) and add as few deltas as possible. Let the config own
 import ordering; don't reintroduce hand-review of it. **Keep `no-use-before-define`
 off** (or set `{ functions: false }` if you enable it) so the stepdown module
-order in [§4](#4-module-organization) stays legal.
+order in [§5](#5-module-organization) stays legal.
 
 **The gate.** Wire four package scripts so the names are stable, and require all
 four green before any change lands:
@@ -166,12 +166,70 @@ four green before any change lands:
   character with two meanings. Rule of thumb: if a tool globs the suffix, use a
   dot; otherwise use a dash.
 - **Identifiers reveal intent.** A function, variable, or type whose name doesn't
-  say what it does or holds is a [Mysterious Name](#12-code-smell-baseline). Rename
+  say what it does or holds is a [Mysterious Name](#13-code-smell-baseline). Rename
   it; if no honest name comes, the design underneath is murky.
 
 ---
 
-## 4. Module organization
+## 4. Project structure
+
+**One folder per slice under `src/`; the filename suffix names the layer.** A
+slice is one bounded concern — an aggregate (`order/`, `invoice/`), a feature or
+process (`export/`, `ingestion/`), or a value concept (`money/`). Everything about
+it lives in its folder, named for its entity in the singular using the project's
+own domain vocabulary — the word the glossary already uses. A slice that names a
+process, not an entity, is exempt from the singular rule.
+
+Inside a slice, the suffix carries the layer, so a reader knows what a file is
+before opening it:
+
+| File                    | Layer                                                                                            |
+| ----------------------- | ------------------------------------------------------------------------------------------------ |
+| `<slice>-validators.ts` | Client-safe Zod schemas and pure field rules ([§8](#8-domain--service-layer-and-validation))     |
+| `<slice>.ts`            | The domain service, the slice's only entry point ([§8](#8-domain--service-layer-and-validation)) |
+| `<slice>-repo.ts`       | Data access ([§7.2](#72-data-access-modules-repositories))                                        |
+| `<slice>-fns.ts`        | The transport edge: server functions over the service ([§6](#6-server--client-boundary))         |
+| `<slice>-queries.ts`    | TanStack Query options over the server functions ([§0](#0-first-principle-idiomatic-stack-first)) |
+
+A single aggregate is the worked example — for `order/`: `order-validators.ts`,
+`order.ts`, `order-repo.ts`, `order-fns.ts`, `order-queries.ts`, each test beside
+its module. Copy its shape for a new slice.
+
+- **No barrels.** A slice holds server-only modules (`-repo`, the service) beside
+  its one client-safe module (`-validators`), so an `index.ts` re-export would pull
+  server code into any client importer. A slice folder has no `index.ts`; consumers
+  import the specific module ([§6](#6-server--client-boundary)).
+- **One client-safe module per aggregate** — the `-validators.ts`. It answers "what
+  may the browser import from this slice?" Enumerate the client-safe set in a
+  manifest the boundary test reads, so the test enforces the split.
+- **A satellite earns its file.** A pure rule with one consumer folds into that
+  consumer, its unit test keeping its own file and importing the host module. Split
+  a satellite out only when folding would cost a fast pure test or collapse a
+  deliberate boundary.
+- **Tests sit beside their module**, named after it (`order.test.ts`,
+  `order-validators.test.ts`).
+
+**Cross-cutting code that no slice owns has fixed homes:**
+
+| Folder            | Holds                                                                                                                        |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `src/routes/`     | File-based route tree. Route-only, non-routable helpers go in a `-`-prefixed folder the router ignores (e.g. `-components/`). |
+| `src/components/` | Shared components; `components/ui/` is the shadcn primitive set. A feature's own component cluster gets a subfolder.          |
+| `src/db/`         | Drizzle schema, the client singleton (`index.ts`), generated auth schema.                                                    |
+| `src/error/`      | `app-error` and the error middleware.                                                                                        |
+| `src/lib/`        | Cross-cutting kernels and infra with no owning slice: id, the server-only guard, the query client, theme, the datetime kernel. A large kernel gets its own subfolder (`lib/datetime/`), no barrel. |
+| `src/test/`       | Shared test helpers and fixtures.                                                                                            |
+
+Move a module out of `lib/` the moment it gains a single owning slice.
+
+**Dependency direction is a design constraint.** Slices depend downward toward
+shared kernels; a composition root (the auth singleton) may import the slices it
+wires, but slices do not cycle through each other. Two slices importing each other
+at runtime means one is misfiled.
+
+---
+
+## 5. Module organization
 
 **Read top-down: exports first, helpers beneath, leaves last.** TypeScript hoists
 `function` declarations, so definition order is a free choice. Choose the order
@@ -213,7 +271,7 @@ function cleanOrder(input: OrderInput): CleanOrder {
 
 ---
 
-## 5. Server / client boundary
+## 6. Server / client boundary
 
 **A server-only module never shares a file with client-imported code.** Only
 **server-function handler bodies** are stripped from the client bundle. A
@@ -252,9 +310,9 @@ database credentials, auth secrets — ships to the browser.
 
 ---
 
-## 6. Data layer
+## 7. Data layer
 
-### 6.1 Schema and data modeling
+### 7.1 Schema and data modeling
 
 Model so that invalid states can't be represented.
 
@@ -268,7 +326,7 @@ Model so that invalid states can't be represented.
   - a **nullable foreign key** for "the chosen one" among children.
 - **A nullable timestamp is not a boolean substitute.** `deletedAt IS NULL` hides a
   two-valued flag in a temporal column and conflates "hasn't happened" with "time
-  unknown", and it inherits every timestamp hazard (see [§6.3](#63-optimistic-locking)).
+  unknown", and it inherits every timestamp hazard (see [§7.3](#73-optimistic-locking)).
   A timestamp records _when_ an event happened; _whether_ it happened is state — an
   enum. When both matter, that's two columns.
 - **Ordered owned collections use an ordinal `position`.**
@@ -284,7 +342,7 @@ Model so that invalid states can't be represented.
   unique('order_line_uq').on(t.orderId, t.sku, t.variant).nullsNotDistinct()
   ```
 
-### 6.2 Data-access modules (repositories)
+### 7.2 Data-access modules (repositories)
 
 Data access lives in server-only `*-repo.ts` modules: plain async functions over
 the ORM, free of business rules.
@@ -332,13 +390,13 @@ the ORM, free of business rules.
   the finders included, so a new query cannot leak across owners by forgetting a
   filter. The scope is a value the service decides from the caller's permission; the
   module applies the clause and never sees a role. Create takes its owner from
-  `context` the same way ([§7](#7-domain--service-layer-and-validation)).
+  `context` the same way ([§8](#8-domain--service-layer-and-validation)).
 
 - **Server-only.** A data-access module imports the DB client (driver and
   connection secrets), so it sits behind a server-function handler and is never
-  imported by a client component ([§5](#5-server--client-boundary)).
+  imported by a client component ([§6](#6-server--client-boundary)).
 - **No business rules here.** An invariant that can't be a database constraint
-  belongs to the service layer above ([§7](#7-domain--service-layer-and-validation)).
+  belongs to the service layer above ([§8](#8-domain--service-layer-and-validation)).
   This layer does data, not policy.
 - **Reads are total; only writers throw.** A finder returns a collection and never
   throws — no match is an empty collection, not an error. Even a by-id lookup
@@ -346,14 +404,14 @@ the ORM, free of business rules.
   duplicate surfaces instead of being masked by "take the first". Deletes are
   idempotent (deleting an absent row is a no-op). Writers raise only for structural
   reasons — an optimistic-lock conflict, or not-found when the caller named a
-  specific row to change — as `AppError` codes ([§8](#8-errors-and-middleware)).
+  specific row to change — as `AppError` codes ([§9](#9-errors-and-middleware)).
 - **Aggregate writes are transactional**, and on update **replace owned child
   collections wholesale** (delete + re-insert with fresh ordinals) rather than
   reconciling in place. Child rows are value objects with no identity worth
   preserving, and re-inserting sidesteps the in-place-reorder hazard from
-  [§6.1](#61-schema-and-data-modeling).
+  [§7.1](#71-schema-and-data-modeling).
 
-### 6.3 Optimistic locking
+### 7.3 Optimistic locking
 
 Guard full-record updates with a `version` integer and a compare-and-swap, never
 with a timestamp.
@@ -386,7 +444,7 @@ with a timestamp.
   rows and every update spuriously conflicts. A monotonic integer has no precision,
   timezone, or round-trip hazard.
 
-### 6.4 Migrations
+### 7.4 Migrations
 
 **Run the migration tool only through a package script; never call it directly.**
 Wrap every schema operation in a named script (`db:generate`, `db:migrate`,
@@ -397,7 +455,7 @@ and every caller (people, agents, CI) picks it up. This applies to agents too.
 
 ---
 
-## 7. Domain / service layer and validation
+## 8. Domain / service layer and validation
 
 The service layer sits between the edge (server functions, forms) and the
 data-access layer, and owns the rules neither of them can.
@@ -406,7 +464,7 @@ data-access layer, and owns the rules neither of them can.
   (`placeOrder`, `updateOrder`), never straight to a data-access function, so its
   rules can't be bypassed. The service alone guarantees a cleaned, normalized,
   rule-checked, owner-stamped result regardless of caller — which is why the
-  integration tests call the service, not the HTTP edge ([§10](#10-testing)).
+  integration tests call the service, not the HTTP edge ([§11](#11-testing)).
 - **Validators are pure, lenient, and shared.** Write one validation schema with
   **no `.transform()`**, so its input and output types coincide and the single
   schema drops into both the server-function validator and the form's `validators`.
@@ -474,7 +532,7 @@ Where each concern lives:
 
 ---
 
-## 8. Errors and middleware
+## 9. Errors and middleware
 
 Deliberate failures are thrown as a typed `AppError` carrying a machine-readable
 code; global middleware maps the code to an HTTP status.
@@ -541,7 +599,7 @@ code; global middleware maps the code to an HTTP status.
 
 ---
 
-## 9. User experience and UI
+## 10. User experience and UI
 
 - **Let the domain and its users decide the experience.** Choose interaction and
   layout patterns from what the app's users expect and find natural, and aim for an
@@ -571,7 +629,7 @@ code; global middleware maps the code to an HTTP status.
   form state; a drag splices that array into its new order. There is no `position`
   property on the in-memory items to keep in sync — the array is the order.
   `position` is only the **persistence encoding**, derived from array index at
-  write time and read back with `orderBy(position)` ([§6.1](#61-schema-and-data-modeling)).
+  write time and read back with `orderBy(position)` ([§7.1](#71-schema-and-data-modeling)).
   Reordering then needs no schema or wire change: the wholesale-replace update path
   can't tell a reorder from any other edit.
 - **Move array elements with the form library's array primitive** (its
@@ -584,7 +642,7 @@ code; global middleware maps the code to an HTTP status.
 
 ---
 
-## 10. Testing
+## 11. Testing
 
 - **Test against a disposable, isolated database — never the development
   database.** Provision and migrate a throwaway database per test session (and per
@@ -611,7 +669,7 @@ code; global middleware maps the code to an HTTP status.
 
 ---
 
-## 11. Version control and workflow
+## 12. Version control and workflow
 
 - **One package manager, used consistently.** This stack uses pnpm (`pnpx`, not
   `npx`); don't mix in npm or yarn, whose lockfiles and install behavior diverge.
@@ -629,7 +687,7 @@ code; global middleware maps the code to an HTTP status.
 
 ---
 
-## 12. Code-smell baseline
+## 13. Code-smell baseline
 
 Beyond the rules above, review carries this fixed set of code smells (Martin
 Fowler, _Refactoring_, ch. 3). It applies even to code that breaks no explicit
@@ -670,7 +728,7 @@ Each reads _what it is_ → _how to fix_:
 
 ---
 
-## 13. Review checklist
+## 14. Review checklist
 
 Run the diff against these, in order. The first is automated; spend human and
 agent attention on the rest.
@@ -680,23 +738,23 @@ agent attention on the rest.
 2. **Stack-first?** No hand-rolled substitute for a blessed primitive
    ([§0](#0-first-principle-idiomatic-stack-first)).
 3. **Boundary intact?** No server-only code reachable from the client bundle; no
-   new barrel merging a server/client pair ([§5](#5-server--client-boundary)).
+   new barrel merging a server/client pair ([§6](#6-server--client-boundary)).
 4. **Data rules?** No boolean columns, no timestamp-as-flag, an ordinal `position`
    for ordered collections, `NULLS NOT DISTINCT` on nullable unique constraints
-   ([§6.1](#61-schema-and-data-modeling)).
+   ([§7.1](#71-schema-and-data-modeling)).
 5. **Data-access shape?** A `{ context, query }` options object, total
    non-throwing readers, idempotent deletes, transactional aggregate writes, no
-   business rules in the layer ([§6.2](#62-data-access-modules-repositories)).
+   business rules in the layer ([§7.2](#72-data-access-modules-repositories)).
 6. **Locking?** A `version` compare-and-swap incremented in SQL; no timestamp lock
-   token ([§6.3](#63-optimistic-locking)).
+   token ([§7.3](#73-optimistic-locking)).
 7. **Errors?** Expected failures are `AppError` codes, always 4xx, with status set
-   by the function middleware ([§8](#8-errors-and-middleware)).
+   by the function middleware ([§9](#9-errors-and-middleware)).
 8. **Validation home?** A lenient pure validator shared with the form; cleaning and
    normalization owned by the service; owner from context, not payload
-   ([§7](#7-domain--service-layer-and-validation)).
+   ([§8](#8-domain--service-layer-and-validation)).
 9. **Module order?** Doc comment, then exports, then helpers stepping down; hoisted
-   helpers written as `function` declarations ([§4](#4-module-organization)).
+   helpers written as `function` declarations ([§5](#5-module-organization)).
 10. **Tests at the right seam?** Behavior through the exported API against an
-    isolated test database, not internals ([§10](#10-testing)).
-11. **Smell pass** — walk [§12](#12-code-smell-baseline) and flag findings as
+    isolated test database, not internals ([§11](#11-testing)).
+11. **Smell pass** — walk [§13](#13-code-smell-baseline) and flag findings as
     judgement calls, not hard violations.

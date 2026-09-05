@@ -165,6 +165,15 @@ four green before any change lands:
   and inside a file-based routes folder a dot already means a route segment — one
   character with two meanings. Rule of thumb: if a tool globs the suffix, use a
   dot; otherwise use a dash.
+- **The service wears no role-tag — the bare slice name _is_ the service.** Every
+  other layer in a slice carries a dash suffix (`order-repo`, `order-fns`,
+  `order-validators`), so the unmarked module is the unambiguous front door:
+  `order.ts` is the `order` service, the slice's only entry point
+  ([§4](#4-project-structure), [§8](#8-domain--service-layer-and-validation)). Add
+  no `-service` tag in either position — `order-service.ts` and `service-order.ts`
+  are both redundant, and the _absence_ of a suffix is the signal that says "this
+  is the front door." (Extends the dotted-tag ban above: no `*.service.ts`, and no
+  `-service` either.)
 - **Identifiers reveal intent.** A function, variable, or type whose name doesn't
   say what it does or holds is a [Mysterious Name](#13-code-smell-baseline). Rename
   it; if no honest name comes, the design underneath is murky.
@@ -186,7 +195,7 @@ before opening it:
 | File                    | Layer                                                                                            |
 | ----------------------- | ------------------------------------------------------------------------------------------------ |
 | `<slice>-validators.ts` | Client-safe Zod schemas and pure field rules ([§8](#8-domain--service-layer-and-validation))     |
-| `<slice>.ts`            | The domain service, the slice's only entry point ([§8](#8-domain--service-layer-and-validation)) |
+| `<slice>.ts`            | The domain service, the slice's only entry point — bare name, no `-service` tag ([§8](#8-domain--service-layer-and-validation)) |
 | `<slice>-repo.ts`       | Data access ([§7.2](#72-data-access-modules-repositories))                                        |
 | `<slice>-fns.ts`        | The transport edge: server functions over the service ([§6](#6-server--client-boundary))         |
 | `<slice>-queries.ts`    | TanStack Query options over the server functions ([§0](#0-first-principle-idiomatic-stack-first)) |
@@ -268,6 +277,65 @@ function cleanOrder(input: OrderInput): CleanOrder {
 - **Scope.** This governs `.ts` modules that carry logic (service, data-access,
   and library layers). Component files keep their component-first idiom, which is
   already top-down. Test files are exempt.
+
+### 5.1 Function signatures
+
+**Prefer a single options object over positional parameters in the code you
+write.** A named object reads at the call site without counting arguments, takes
+a new field without reordering every caller, and matches the shapes already in
+this standard — the service's `placeOrder({ context, input })`
+([above](#5-module-organization)) and the data-access `{ context, query }`
+([§7.2](#72-data-access-modules-repositories)). This governs any function you
+author — service, data-access, library, and client-side utilities alike, server
+or browser. The one exception is a signature a framework already owns (below).
+
+```ts
+// ✗ positional — the call site is a puzzle: reconcile(order, true, false)
+export function reconcile(order: Order, dryRun: boolean, force: boolean) {}
+
+// ✓ one options object — every argument names itself at the call site
+export function reconcile(opts: {
+  order: Order
+  dryRun?: boolean
+  force?: boolean
+}) {}
+```
+
+- **A single, obvious argument stays positional.** One well-named parameter is
+  already self-documenting, so wrapping it earns nothing: `cleanOrder(input)`
+  ([above](#5-module-organization)) stays `cleanOrder(input)`, not
+  `cleanOrder({ input })`. Reach for the object at the second parameter — or at
+  the first when a boolean or another field is already coming. The data-access
+  layer is stricter and always takes the object, even for a lone criterion
+  ([§7.2](#72-data-access-modules-repositories)).
+
+- **A framework-owned signature follows the framework, never this rule.** Where
+  a framework hands your function its arguments, use the shape it passes — the
+  first principle ([§0](#0-first-principle-idiomatic-stack-first)) decides the
+  tie. This is not a server/client split; it's about who owns the signature:
+  - **TanStack server functions** take input through `.validator(schema)` and
+    hand the handler the framework's `{ data, context }` object. Use it as
+    given; translate to your service's shape inside the body.
+
+    ```ts
+    export const placeOrderFn = createServerFn({ method: 'POST' })
+      .validator(orderCreateSchema) //          input arrives as `data`
+      .handler(({ data, context }) => //         the framework's shape, not ours
+        placeOrder({ context, input: data }),
+      )
+    ```
+  - **React components take props; hooks take their conventional arguments.** A
+    component's single `props` object is already the idiom, and a hook keeps its
+    ordered arguments (`useThing(id, options)`). Don't reshape either into a
+    house options object. Component and hook files keep their own idiom
+    throughout ([§5](#5-module-organization), Scope).
+  - **Any other framework callback** — a route loader, a middleware, an event
+    handler — receives the arguments the framework defines. Match them.
+
+Why: one call convention across the code you write means a reader learns
+argument shapes once; deferring to the framework where it owns the signature
+keeps the app reading as idiomatic TanStack and React, not a house dialect
+layered on top.
 
 ---
 
@@ -752,8 +820,10 @@ agent attention on the rest.
 8. **Validation home?** A lenient pure validator shared with the form; cleaning and
    normalization owned by the service; owner from context, not payload
    ([§8](#8-domain--service-layer-and-validation)).
-9. **Module order?** Doc comment, then exports, then helpers stepping down; hoisted
-   helpers written as `function` declarations ([§5](#5-module-organization)).
+9. **Module order & signatures?** Doc comment, then exports, then helpers stepping
+   down; hoisted helpers written as `function` declarations; a single options
+   object for any multi-argument function you write, deferring to framework-owned
+   signatures ([§5](#5-module-organization)).
 10. **Tests at the right seam?** Behavior through the exported API against an
     isolated test database, not internals ([§11](#11-testing)).
 11. **Smell pass** — walk [§13](#13-code-smell-baseline) and flag findings as

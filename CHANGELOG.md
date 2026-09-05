@@ -7,6 +7,19 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 1.2.0 — 2026-09-05
+
+- Added §5.1 "Function signatures": prefer a single options object over positional
+  parameters in any custom function you write (server or browser), with a single
+  obvious argument left positional and an explicit carve-out for framework-owned
+  signatures — TanStack server functions (`{ data, context }`), React components
+  (props) and hooks, and other framework callbacks. Extended review-checklist item
+  9 to cover it.
+- Added a §3 naming rule: the service wears no role-tag — the bare slice name _is_
+  the service, so no `-service` suffix or prefix (`order.ts`, never
+  `order-service.ts`). Extends the existing dotted-tag ban and reinforced in the §4
+  layer table. Matches refapp and ctsheets.
+
 ## 1.1.0 — 2026-08-26
 
 - Added §4 "Project structure": one folder per slice under `src/`, with the filename

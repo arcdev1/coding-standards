@@ -97,6 +97,14 @@ second foundation: today `shadcn add combobox` resolves to a Base UI
 (`@base-ui-components/react`) block — compose the combobox from a Radix `Popover` and
 a `cmdk` `Command` instead of adopting a parallel primitive library.
 
+**Expect the `cn` package (shadcn, Sept 2026+).** shadcn extracted `cn` into its own
+npm package; registry components now `import { cn } from 'cn'` with no documented
+opt-out. On a project that predates this, run `pnpm dlx shadcn@latest migrate cn`
+once — it repoints the local combiner so `lib/utils` re-exports `cn` from the package
+(the same source `add` output imports), making hand-ported components and new `add`
+output share one implementation and removing any per-`add` fixup. Keep `lib/utils`
+for any project-specific helpers it also holds.
+
 Why: one canonical way per concern means every part of the app reads the same, and a
 fix in the primitive reaches every caller — while an app ported without its
 `components.json` can't run the generator at all, and a later `init` to create one

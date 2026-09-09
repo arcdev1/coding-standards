@@ -15,9 +15,11 @@ wording, examples, or typo fixes with no change in what passes.
   never run a fresh `shadcn init` on an app that already has `components/ui/` (it
   re-scaffolds base primitives and rewrites the Tailwind entry CSS); and one primitive
   foundation per app (compose the combobox from Radix `Popover` + `cmdk` `Command`,
-  don't let `add` pull in a second Base UI foundation). Prompted by an `app/` port that
-  shipped the vendored primitives without their `components.json`, leaving the CLI
-  unusable. §4's `src/components/` row now points at `components.json`.
+  don't let `add` pull in a second Base UI foundation). Also documents shadcn's
+  Sept-2026 `cn`-package change — registry components now import `cn` from the `cn`
+  package; adopt it on a pre-existing project with `shadcn migrate cn`. Prompted by an
+  `app/` port that shipped the vendored primitives without their `components.json`,
+  leaving the CLI unusable. §4's `src/components/` row now points at `components.json`.
 
 ## 1.2.0 — 2026-09-05
 

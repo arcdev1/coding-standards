@@ -73,8 +73,42 @@ substitute. If a bespoke mechanism is genuinely needed, state why the idiomatic
 one doesn't fit before building it. Install shadcn components with the generator
 (`pnpm dlx shadcn@latest add <name>`) rather than hand-authoring what it emits.
 
-Why: one canonical way per concern means every part of the app reads the same, and
-a fix in the primitive reaches every caller.
+The generator needs a **committed `components.json`** — a required, checked-in file,
+not a scaffolding by-product. Its canonical shape: `style: "new-york"`, `tsx: true`,
+`rsc: false`, `tailwind.cssVariables: true`, `tailwind.config: ""` (Tailwind v4 has
+no JS config), aliases on the repo's `#/` path (`components`, `ui`,
+`utils: "#/lib/utils"`, `lib`, `hooks`), `iconLibrary: "lucide"`, and
+`tailwind.baseColor` set to whichever base matches the app's own token chroma —
+`neutral` for achromatic `oklch(L 0 0)` tokens, a tinted base (`zinc`, `stone`, …)
+only when the tokens carry that base's hue. `baseColor` feeds token generation at
+`init` only, so record the honest match even for a hand-tuned palette. Each app owns
+its styling; this file states that app's choice, it does not standardize a palette.
+
+**Never run a fresh `shadcn init` on an app that already has `components/ui/`.**
+`init` re-scaffolds the base primitives — overwriting a customized
+`button`/`input`/`textarea` — and rewrites the Tailwind entry CSS, destroying
+hand-tuned tokens and any brand layer. Hand-write `components.json` instead, then use
+`add` only, run from the directory that contains `src/` — the repo root for a flat
+app, the app subfolder (e.g. `app/`) for a nested one.
+
+**One primitive foundation per app.** The set sits on Radix (the unified `radix-ui`
+package) plus `cmdk` for the command/combobox surface. Don't let `add` pull in a
+second foundation: today `shadcn add combobox` resolves to a Base UI
+(`@base-ui-components/react`) block — compose the combobox from a Radix `Popover` and
+a `cmdk` `Command` instead of adopting a parallel primitive library.
+
+**Expect the `cn` package (shadcn, Sept 2026+).** shadcn extracted `cn` into its own
+npm package; registry components now `import { cn } from 'cn'` with no documented
+opt-out. On a project that predates this, run `pnpm dlx shadcn@latest migrate cn`
+once — it repoints the local combiner so `lib/utils` re-exports `cn` from the package
+(the same source `add` output imports), making hand-ported components and new `add`
+output share one implementation and removing any per-`add` fixup. Keep `lib/utils`
+for any project-specific helpers it also holds.
+
+Why: one canonical way per concern means every part of the app reads the same, and a
+fix in the primitive reaches every caller — while an app ported without its
+`components.json` can't run the generator at all, and a later `init` to create one
+silently reverts every local component and token.
 
 ---
 
@@ -223,7 +257,7 @@ its module. Copy its shape for a new slice.
 | Folder            | Holds                                                                                                                        |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `src/routes/`     | File-based route tree. Route-only, non-routable helpers go in a `-`-prefixed folder the router ignores (e.g. `-components/`). |
-| `src/components/` | Shared components; `components/ui/` is the shadcn primitive set. A feature's own component cluster gets a subfolder.          |
+| `src/components/` | Shared components; `components/ui/` is the shadcn primitive set, configured by the committed `components.json` ([§0](#0-first-principle-idiomatic-stack-first)). A feature's own component cluster gets a subfolder. |
 | `src/db/`         | Drizzle schema, the client singleton (`index.ts`), generated auth schema.                                                    |
 | `src/error/`      | `app-error` and the error middleware.                                                                                        |
 | `src/lib/`        | Cross-cutting kernels and infra with no owning slice: id, the server-only guard, the query client, theme, the datetime kernel. A large kernel gets its own subfolder (`lib/datetime/`), no barrel. |

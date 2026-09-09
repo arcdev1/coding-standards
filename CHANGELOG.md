@@ -7,6 +7,18 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 1.3.0 — 2026-09-09
+
+- Extended §0 with the shadcn generator's operating rules: a committed
+  `components.json` is required (with its canonical shape and a `baseColor` chosen to
+  match the app's own token chroma — `neutral` for achromatic `oklch(L 0 0)` tokens);
+  never run a fresh `shadcn init` on an app that already has `components/ui/` (it
+  re-scaffolds base primitives and rewrites the Tailwind entry CSS); and one primitive
+  foundation per app (compose the combobox from Radix `Popover` + `cmdk` `Command`,
+  don't let `add` pull in a second Base UI foundation). Prompted by an `app/` port that
+  shipped the vendored primitives without their `components.json`, leaving the CLI
+  unusable. §4's `src/components/` row now points at `components.json`.
+
 ## 1.2.0 — 2026-09-05
 
 - Added §5.1 "Function signatures": prefer a single options object over positional

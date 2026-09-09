@@ -548,6 +548,24 @@ with a timestamp.
 
 ### 7.4 Migrations
 
+**Migrations are generated from the schema, never hand-written.** Change the
+Drizzle schema in `src/db/`, then let Drizzle Kit diff it and emit the SQL:
+`db:generate` writes the timestamped migration together with its snapshot and
+journal entry, and `db:migrate` applies the pending files. Commit the generated
+`.sql` and the `meta/` snapshot, but treat them as build output — do not hand-edit
+them. Editing the emitted SQL, or dropping in a loose migration file, desyncs the
+snapshot Drizzle diffs against, so the next `db:generate` produces a corrupt or
+duplicated diff. The schema is the source of truth; the migration is its compiled
+artifact.
+
+**Reach for hand-written SQL only when the schema DSL genuinely can't express the
+change** — a data backfill, an index built `CONCURRENTLY`, a constraint or trigger
+Drizzle has no builder for. Even then, keep it inside the ledger: generate an empty,
+tracked migration with `pnpm db:generate --custom` and write the SQL into that file,
+so the journal stays ordered and the migration replays everywhere. A raw statement
+run straight against a database, outside a generated migration, is off the table —
+it leaves every other environment behind and can't be replayed.
+
 **Run the migration tool only through a package script; never call it directly.**
 Wrap every schema operation in a named script (`db:generate`, `db:migrate`,
 `db:push`, `db:studio`, …) and always go through it — not the bare CLI, not
@@ -849,16 +867,20 @@ agent attention on the rest.
    business rules in the layer ([§7.2](#72-data-access-modules-repositories)).
 6. **Locking?** A `version` compare-and-swap incremented in SQL; no timestamp lock
    token ([§7.3](#73-optimistic-locking)).
-7. **Errors?** Expected failures are `AppError` codes, always 4xx, with status set
+7. **Migrations generated?** The schema change was compiled to a migration with
+   `db:generate` and applied with `db:migrate`; the generated SQL and snapshot are
+   committed but not hand-edited; raw SQL only through a tracked
+   `db:generate --custom` migration ([§7.4](#74-migrations)).
+8. **Errors?** Expected failures are `AppError` codes, always 4xx, with status set
    by the function middleware ([§9](#9-errors-and-middleware)).
-8. **Validation home?** A lenient pure validator shared with the form; cleaning and
+9. **Validation home?** A lenient pure validator shared with the form; cleaning and
    normalization owned by the service; owner from context, not payload
    ([§8](#8-domain--service-layer-and-validation)).
-9. **Module order & signatures?** Doc comment, then exports, then helpers stepping
-   down; hoisted helpers written as `function` declarations; a single options
-   object for any multi-argument function you write, deferring to framework-owned
-   signatures ([§5](#5-module-organization)).
-10. **Tests at the right seam?** Behavior through the exported API against an
+10. **Module order & signatures?** Doc comment, then exports, then helpers stepping
+    down; hoisted helpers written as `function` declarations; a single options
+    object for any multi-argument function you write, deferring to framework-owned
+    signatures ([§5](#5-module-organization)).
+11. **Tests at the right seam?** Behavior through the exported API against an
     isolated test database, not internals ([§11](#11-testing)).
-11. **Smell pass** — walk [§13](#13-code-smell-baseline) and flag findings as
+12. **Smell pass** — walk [§13](#13-code-smell-baseline) and flag findings as
     judgement calls, not hard violations.

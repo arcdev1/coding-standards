@@ -7,6 +7,18 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 1.4.0 — 2026-09-09
+
+- Extended §7.4 "Migrations" with the schema-first authoring rule: migrations are
+  generated from the Drizzle schema via `db:generate` and applied with `db:migrate`
+  — the generated SQL and `meta/` snapshot are committed but treated as build output,
+  never hand-edited (a hand-edit or loose migration file desyncs the snapshot Drizzle
+  diffs against). Hand-written SQL is reserved for changes the schema DSL can't express
+  (data backfills, `CONCURRENTLY` indexes, triggers) and must still go through a tracked
+  `db:generate --custom` migration; a raw statement run straight against a database is
+  off the table. Added review-checklist item 7 ("Migrations generated?") and renumbered
+  the former items 7–11 to 8–12.
+
 ## 1.3.0 — 2026-09-09
 
 - Extended §0 with the shadcn generator's operating rules: a committed

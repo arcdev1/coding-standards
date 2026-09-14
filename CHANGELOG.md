@@ -7,6 +7,18 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 1.5.0 — 2026-09-14
+
+- Extended "How this standard relates to a project's own docs" with the agent-facing
+  records lifecycle. Conventions and code comments are current-state (edited in place,
+  history in git; no "used to" comments). A superseded ADR is not rewritten: it keeps
+  a machine-readable `status:` and a forward link, its body is distilled to the
+  decision and the reasons that carry forward, and it moves to a status-gated path
+  (`docs/adr/superseded/`) so it leaves the default grep and retrieval set. Reason:
+  agent freshness rot, where a search ranks a superseded record as readily as its
+  replacement. git is the recovery backstop, not the read path. Source: Bill,
+  agent-facing-records decision.
+
 ## 1.4.0 — 2026-09-09
 
 - Extended §7.4 "Migrations" with the schema-first authoring rule: migrations are

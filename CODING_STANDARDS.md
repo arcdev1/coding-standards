@@ -15,9 +15,21 @@ This file is the **portable rule set** — copy it into a project and it stands
 alone. On top of it a project keeps two current-state companions:
 **`docs/conventions/`**, the same rules as worked examples against that app's own
 domain (each linking its decision record), and **`docs/adr/`**, short records of
-what was decided and why. The standard states the rule, a convention
-shows it in the codebase, the ADR says why — all three edited in place, history in
-git.
+what was decided and why. The standard states the rule, a convention shows it in the
+codebase, the ADR says why. Conventions and code comments are current-state: edit
+them in place and let git hold the history. Do not write "used to" or "previously"
+into a comment; what changed lives in git and, where it was a decision, in an ADR.
+
+**Superseded records leave the read path, they are not deleted.** An accepted ADR's
+decision is not rewritten in place. When a later ADR supersedes it, mark the old one
+with a machine-readable `status:` (`superseded by ADR NNNN`) plus a forward link,
+distill the body to the decision and the reasons that carry forward (dropping the
+implementation detail the successor now owns), and move it under a status-gated path
+such as `docs/adr/superseded/` so it leaves the default grep and retrieval set. The
+reason is agent freshness rot: a keyword or vector search ranks a superseded record
+as readily as its replacement, and higher the longer it has been in the tree, so a
+superseded record left on the read path pulls stale guidance into an agent's context
+as if it were current. git is the recovery backstop, not the agent's read path.
 
 ## The stack these standards assume
 

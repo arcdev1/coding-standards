@@ -805,13 +805,20 @@ code; global middleware maps the code to an HTTP status.
 
 - **One package manager, used consistently.** This stack uses pnpm (`pnpx`, not
   `npx`); don't mix in npm or yarn, whose lockfiles and install behavior diverge.
-- **Work on a feature branch; the merge is the human gate.** An automated
-  contributor may commit and push to its own feature branch without being asked.
-  Merging into the default (shared) branch requires explicit human approval. Never
-  merge a pull request without it, and never commit directly to the default branch.
+- **Work on a feature branch; only the production merge needs a human.** An
+  automated contributor may commit and push to its own feature branch without being
+  asked. Merging into the **production-aligned branch** of an externally deployed app
+  requires explicit human approval that names that branch. The production-aligned
+  branch is the one whose every push deploys production: `prod` where the app runs
+  `main` as its trunk and `prod` as its release branch, or the default branch itself
+  where that branch deploys production. Every other merge needs no approval: into a
+  branch that does not deploy production, in an app that runs only locally, or one
+  that stays in a local checkout. A request to merge that names no branch means a
+  non-production target. Never commit directly to the default branch or the
+  production-aligned branch.
 - **Never bypass hooks** (`--no-verify`), and never rewrite already-shared history:
-  no amend, rebase, or force-push on the default branch or a branch someone else is
-  building on.
+  no amend, rebase, or force-push on the default branch, the production-aligned
+  branch, or a branch someone else is building on.
 - **Every commit leaves the automated gate green** — `check`, `lint`, `typecheck`,
   and the tests all pass ([§2](#2-formatting-lint-and-types-automated)).
 - **Record cross-cutting decisions as ADRs** in the repository, so the reasoning is

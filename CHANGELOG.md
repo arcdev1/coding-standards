@@ -7,6 +7,18 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 1.6.0 — 2026-10-06
+
+- Narrowed §12's human merge gate to production. Merging into the production-aligned
+  branch of an externally deployed app (the branch whose every push deploys
+  production: `prod` where `main` is the trunk, or the default branch where that
+  branch deploys production) needs explicit approval naming that branch. Merges into
+  non-production branches, in apps that run only locally, or that stay in a local
+  checkout need none, and a merge request that names no branch means a
+  non-production target. The history-rewrite rule now also covers the
+  production-aligned branch. MINOR: nothing that passed review before fails now.
+  Source: Bill, external-app branch model (arcdev1/chaos ADR-0038).
+
 ## 1.5.0 — 2026-09-14
 
 - Extended "How this standard relates to a project's own docs" with the agent-facing

@@ -272,7 +272,7 @@ its module. Copy its shape for a new slice.
 | `src/components/` | Shared components; `components/ui/` is the shadcn primitive set, configured by the committed `components.json` ([§0](#0-first-principle-idiomatic-stack-first)). A feature's own component cluster gets a subfolder. |
 | `src/db/`         | Drizzle schema, the client singleton (`index.ts`), generated auth schema.                                                    |
 | `src/error/`      | `app-error` and the error middleware.                                                                                        |
-| `src/lib/`        | Cross-cutting kernels and infra with no owning slice: id, the server-only guard, the query client, theme, the datetime kernel. A large kernel gets its own subfolder (`lib/datetime/`), no barrel. |
+| `src/lib/`        | Cross-cutting kernels and infra with no owning slice: id, the server-only guard, the query client, theme, the datetime kernel, the `Result` type ([§5.2](#52-return-values)). A large kernel gets its own subfolder (`lib/datetime/`), no barrel. |
 | `src/test/`       | Shared test helpers and fixtures.                                                                                            |
 
 Move a module out of `lib/` the moment it gains a single owning slice.
@@ -382,6 +382,106 @@ Why: one call convention across the code you write means a reader learns
 argument shapes once; deferring to the framework where it owns the signature
 keeps the app reading as idiomatic TanStack and React, not a house dialect
 layered on top.
+
+### 5.2 Return values
+
+**Return a named object when a function has more than one thing to report.** The
+caller reads each field by name, and a new field breaks no existing caller. Never
+return a tuple or positional array from a function you write. A single obvious
+value stays bare: a finder returns its collection, a predicate returns its boolean.
+React hooks and other framework-owned shapes keep their own idiom
+([§5.1](#51-function-signatures)).
+
+```ts
+// ✗ a tuple: the caller has to remember which slot is which
+return [order, true]
+
+// ✓ a named object
+return { order, operation: 'insert' }
+```
+
+**Return a `Result` when failure is an ordinary branch the direct caller handles.**
+TypeScript has no checked exceptions, so the codes a function can throw are
+invisible in its signature. A `Result` puts each failure in the return type, and the
+caller narrows on `error.code`, so the data a failure carries is typed where it is
+handled. Zod's `safeParse` is the model. Use it for:
+
+- **Classifying functions** that sort an input into one of several expected
+  outcomes: a parse, a match, or a lookup whose "no match" or "ambiguous" is a normal
+  answer.
+- **Batch work** with per-item outcomes, so a rejected item is recorded and the
+  batch continues.
+- **A service call the caller recovers from** by falling back, retrying with other
+  input, or recording the failure and moving on.
+
+Define the type once, client-safe, in `src/lib/result.ts`:
+
+```ts
+/** The outcome of a function whose failures are branches its caller handles. Client-safe. */
+export type Result<T, E extends { code: string }> =
+  | { ok: true; value: T }
+  | { ok: false; error: E }
+```
+
+Each function declares its own failure union, with whatever data the caller needs
+to act on. Declare the return type and return plain literals; the compiler checks
+each literal against the declared type, so no `ok()` or `err()` constructors are
+needed. Add no Result library (neverthrow, Effect, and the like): their chaining API
+(`andThen`, `ResultAsync`) reads unlike the rest of a TanStack app, and narrowing on
+`ok` covers the need.
+
+```ts
+export type OrderMatch = Result<
+  Order,
+  { code: 'NO_MATCH' } | { code: 'AMBIGUOUS'; candidates: Order[] }
+>
+
+export async function matchOrder(opts: MatchOrderOptions): Promise<OrderMatch> {
+  const candidates = await findByReference({
+    context: opts.context,
+    query: { reference: opts.reference },
+  })
+  if (candidates.length === 0) return { ok: false, error: { code: 'NO_MATCH' } }
+  if (candidates.length > 1)
+    return { ok: false, error: { code: 'AMBIGUOUS', candidates } }
+  return { ok: true, value: candidates[0] }
+}
+
+// The caller: a rejected row is recorded and the batch continues.
+for (const row of rows) {
+  const match = await matchOrder({ context, reference: row.reference })
+  if (!match.ok) {
+    rejected.push({ row, reason: match.error.code })
+    continue
+  }
+  applied.push(await applyPayment({ context, order: match.value, row }))
+}
+return { applied, rejected }
+```
+
+**Everywhere else, throw.** A `Result` stops at the direct caller:
+
+- **A failure that ends the request throws `AppError`**
+  ([§9](#9-errors-and-middleware)). If the caller's only move on `{ ok: false }`
+  would be to throw, throw at the source.
+- **A server function never returns a `Result`.** TanStack Query caches
+  `{ ok: false }` as a successful response, the router's `errorComponent` never sees
+  it, and the §9 middleware maps no status. A handler that receives a failed
+  `Result` throws an `AppError` for it.
+- **A transaction aborts by throwing.** Drizzle rolls back only when the
+  transaction callback throws, so work inside `inTransaction` that returns
+  `{ ok: false }` commits whatever it already wrote. Throw inside the transaction,
+  and build the `Result` outside it when the caller needs one.
+- **Data-access modules keep [§7.2](#72-data-access-modules-repositories).**
+  Readers are total and writers throw, so a repo function never returns a `Result`;
+  the service classifies what a reader returned, as `matchOrder` does above.
+- **Unexpected failures still throw.** A dropped connection or a bug propagates as
+  a throw. Never wrap arbitrary code in `try/catch` to turn every error into a
+  `Result`.
+
+Why: a `Result` makes a failure part of the contract where the caller acts on it,
+and throwing everywhere else keeps the app on the error path that TanStack Query,
+the router, and the error middleware already handle.
 
 ---
 
@@ -666,12 +766,14 @@ Where each concern lives:
 
 ## 9. Errors and middleware
 
-Deliberate failures are thrown as a typed `AppError` carrying a machine-readable
-code; global middleware maps the code to an HTTP status.
+Deliberate failures that end a request are thrown as a typed `AppError` carrying a
+machine-readable code; global middleware maps the code to an HTTP status.
 
-- **Throw `new AppError(code, message?)` for every expected failure.** The **code**
-  is the contract — the rest of the system branches on `code`; `message` is for
-  humans. Wrap an underlying error through `options.cause`.
+- **Throw `new AppError(code, message?)` for every expected failure that ends the
+  request.** A failure the direct caller handles as an ordinary branch is returned
+  as a `Result` instead ([§5.2](#52-return-values)). The **code** is the contract —
+  the rest of the system branches on `code`; `message` is for humans. Wrap an
+  underlying error through `options.cause`.
 
   ```ts
   export type ErrorCode =
@@ -890,15 +992,19 @@ agent attention on the rest.
    `db:generate` and applied with `db:migrate`; the generated SQL and snapshot are
    committed but not hand-edited; raw SQL only through a tracked
    `db:generate --custom` migration ([§7.4](#74-migrations)).
-8. **Errors?** Expected failures are `AppError` codes, always 4xx, with status set
-   by the function middleware ([§9](#9-errors-and-middleware)).
+8. **Errors?** Expected failures that end the request are `AppError` codes, always
+   4xx, with status set by the function middleware ([§9](#9-errors-and-middleware)).
+   A `Result` appears only where the direct caller branches on the failure, and is
+   never returned from a server function or a data-access module, nor used to abort
+   a transaction ([§5.2](#52-return-values)).
 9. **Validation home?** A lenient pure validator shared with the form; cleaning and
    normalization owned by the service; owner from context, not payload
    ([§8](#8-domain--service-layer-and-validation)).
-10. **Module order & signatures?** Doc comment, then exports, then helpers stepping
-    down; hoisted helpers written as `function` declarations; a single options
-    object for any multi-argument function you write, deferring to framework-owned
-    signatures ([§5](#5-module-organization)).
+10. **Module order, signatures & returns?** Doc comment, then exports, then helpers
+    stepping down; hoisted helpers written as `function` declarations; a single
+    options object for any multi-argument function you write, deferring to
+    framework-owned signatures; a named object for a multi-value return, never a
+    tuple ([§5](#5-module-organization)).
 11. **Tests at the right seam?** Behavior through the exported API against an
     isolated test database, not internals ([§11](#11-testing)).
 12. **Smell pass** — walk [§13](#13-code-smell-baseline) and flag findings as

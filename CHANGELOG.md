@@ -7,6 +7,22 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 1.7.0 — 2026-10-10
+
+- Added §5.2 "Return values", the "return an object" half of RORO (§5.1 already
+  carries "receive an object"). A function with more than one thing to report returns
+  a named object, never a tuple. A function whose failure is an ordinary branch its
+  direct caller handles (classifying a parse or match, per-item outcomes in batch
+  work, a service call the caller recovers from) returns a `Result`: a plain
+  `{ ok: true; value } | { ok: false; error: { code } }` union defined once in
+  `src/lib/result.ts`, with no Result library. Everywhere else throws: a failure that
+  ends the request is still an `AppError` (§9), a server function never returns a
+  `Result` (TanStack Query would cache it as a success, and the error middleware would
+  map no status), a transaction aborts by throwing (Drizzle commits work that returns
+  instead of throwing), and data-access modules keep §7.2. §9 now scopes `AppError` to
+  failures that end the request; §4's `src/lib/` row, and review-checklist items 8 and
+  10, cover the additions. MINOR: a rule added. Source: Bill, RORO discussion.
+
 ## 1.6.0 — 2026-10-06
 
 - Narrowed §12's human merge gate to production. Merging into the production-aligned

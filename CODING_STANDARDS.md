@@ -78,6 +78,7 @@ The blessed primitive for each concern on this stack:
 | DB access             | Drizzle                      | raw SQL strings or a hand-built query builder   |
 | Auth                  | Better Auth                  | a hand-rolled session/password system           |
 | Endpoint auth         | framework middleware         | a guard function called by hand in each handler |
+| Server-only modules   | Start's `server-only` marker | a hand-rolled `import.meta.env.SSR` guard       |
 | UI components         | shadcn/ui over Radix         | hand-built dialogs, selects, menus              |
 
 If the right library isn't installed, propose adding it rather than hand-rolling a
@@ -272,7 +273,7 @@ its module. Copy its shape for a new slice.
 | `src/components/` | Shared components; `components/ui/` is the shadcn primitive set, configured by the committed `components.json` ([§0](#0-first-principle-idiomatic-stack-first)). A feature's own component cluster gets a subfolder. |
 | `src/db/`         | Drizzle schema, the client singleton (`index.ts`), generated auth schema.                                                    |
 | `src/error/`      | `app-error` and the error middleware.                                                                                        |
-| `src/lib/`        | Cross-cutting kernels and infra with no owning slice: id, the server-only guard, the query client, theme, the datetime kernel, the `Result` type ([§5.2](#52-return-values)). A large kernel gets its own subfolder (`lib/datetime/`), no barrel. |
+| `src/lib/`        | Cross-cutting kernels and infra with no owning slice: id, the query client, theme, the datetime kernel, the `Result` type ([§5.2](#52-return-values)). A large kernel gets its own subfolder (`lib/datetime/`), no barrel. |
 | `src/test/`       | Shared test helpers and fixtures.                                                                                            |
 
 Move a module out of `lib/` the moment it gains a single owning slice.
@@ -497,30 +498,36 @@ database credentials, auth secrets — ships to the browser.
   and the browser auth client in another; keep an isomorphic store separate from
   the server functions that read cookies. A barrel that re-exports both sides
   reintroduces the leak.
-- **Guard the leaf modules that hold secrets.** Give the database client and the
-  auth instance a first-line import of a guard that throws if the module is ever
-  evaluated in the client bundle:
-
-  ```ts
-  // server-only.ts — throws at load if it runs in the browser bundle.
-  // Keys off the bundler's SSR flag; stays inert on the server, during SSR,
-  // and under the test runner.
-  if (import.meta.env.SSR === false) {
-    throw new Error('a server-only module was imported into the client bundle')
-  }
-  ```
+- **Mark the leaf modules that hold secrets with Start's `server-only` marker.**
+  Give the database client and the auth instance a first-line side-effect import of
+  `@tanstack/react-start/server-only`. Start's import protection, on by default,
+  then denies the file in the client environment wherever the import chain starts.
+  A route that reaches the database client through a service and a repository fails
+  `vite build`, and the error prints the chain from the route to the marked file.
+  In dev, the default behaviour logs the same violation as a terminal warning and
+  substitutes a mock module, so the production build is the step that fails on a
+  leak. The marker resolves to an empty module, so it does nothing on the server,
+  during SSR, or under the test runner.
 
   ```ts
   // db/index.ts
-  import '#/lib/server-only'
+  import '@tanstack/react-start/server-only'
   // …create and export the Drizzle client
   ```
 
-- **Do not put the guard on server-function modules or client-safe modules.**
+  Start's default `*.server.*` file-name rule denies the same import by path. This
+  standard uses the marker so slice files keep their [§4](#4-project-structure)
+  names. A hand-rolled guard that throws when `import.meta.env.SSR` is false
+  duplicates this built-in ([§0](#0-first-principle-idiomatic-stack-first)) and
+  catches less: the client build passes with it in place, the guarded module ships
+  in the client bundle with its secrets, and the error appears only when a browser
+  runs the module.
+
+- **Do not put the marker on server-function modules or client-safe modules.**
   Server-function files are imported by client components to make the RPC call (the
   framework strips their bodies); schema, validators, and the browser auth client
-  are meant to run in both places. Adding the guard there breaks the client build,
-  which is exactly the signal that the module was never server-only.
+  are meant to run in both places. Adding the marker there fails the client build,
+  which is the signal that the module was never server-only.
 
 ---
 
@@ -978,8 +985,9 @@ agent attention on the rest.
    Don't hand-review anything these catch ([§2](#2-formatting-lint-and-types-automated)).
 2. **Stack-first?** No hand-rolled substitute for a blessed primitive
    ([§0](#0-first-principle-idiomatic-stack-first)).
-3. **Boundary intact?** No server-only code reachable from the client bundle; no
-   new barrel merging a server/client pair ([§6](#6-server--client-boundary)).
+3. **Boundary intact?** Secret-holding leaf modules carry Start's `server-only`
+   marker; no server-only code reachable from the client bundle; no new barrel
+   merging a server/client pair ([§6](#6-server--client-boundary)).
 4. **Data rules?** No boolean columns, no timestamp-as-flag, an ordinal `position`
    for ordered collections, `NULLS NOT DISTINCT` on nullable unique constraints
    ([§7.1](#71-schema-and-data-modeling)).

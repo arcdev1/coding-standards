@@ -7,6 +7,23 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 2.0.0 — 2026-10-15
+
+- Replaced §6's hand-rolled server-only guard with TanStack Start's import
+  protection. A secret-holding leaf module (the database client, the auth instance)
+  now opens with `import '@tanstack/react-start/server-only'`, and the local
+  `lib/server-only` module that threw when `import.meta.env.SSR` was false is gone.
+  The marker fails `vite build` when any client import chain reaches the file and
+  prints that chain. The hand-rolled guard let the build pass, shipped the module
+  and its secrets in the client bundle, and threw only in the browser. §6 notes
+  Start's default `*.server.*` file-name rule and keeps §4's file names. §0's
+  table gains a row for the marker, §4's `src/lib/` row drops the guard, and
+  review-checklist item 3 checks for the marker. To migrate, replace each
+  `import '#/lib/server-only'` with the marker import and delete the local module.
+  MAJOR: a hand-rolled guard that passed review now fails checklist items 2 and 3.
+  Source: TanStack Start docs,
+  [Import Protection](https://tanstack.com/start/latest/docs/framework/react/guide/import-protection).
+
 ## 1.7.0 — 2026-10-10
 
 - Added §5.2 "Return values", the "return an object" half of RORO (§5.1 already

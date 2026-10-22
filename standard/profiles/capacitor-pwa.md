@@ -26,7 +26,7 @@ never gates it.
 | Preferences                | `safeStorage` (`src/lib/safe-storage.ts`), a `localStorage` wrapper that never throws                 | bare `localStorage`, which throws in private mode and sandboxed frames    |
 | State shared outside React | a subscribable snapshot (`createStore`, `src/lib/store.ts`) read with `useSyncExternalStore`          | React context for cross-module state; a state library                     |
 | Network                    | `fetch` to a same-origin `/api/...` path from a headless `src/lib` module                             | `fetch` in a component; TanStack Query (the device is the cache)          |
-| Validation                 | Zod schemas with no `.transform()`                                                                    | `if` checks scattered across components and parsers                       |
+| Validation                 | Zod schemas with no `.transform()`, imported from `zod/mini` to keep the bundle small                 | `if` checks scattered across components and parsers; hand-written parsers |
 | Offline and updates        | vite-plugin-pwa, `registerType: 'prompt'`, `registerSW` started from `src/main.tsx`                   | a hand-written service worker; `autoUpdate`                               |
 | Randomness                 | an injected `Rng` from `src/domain/rng.ts` (Web Crypto by default)                                    | `Math.random` in app logic                                                |
 | Analytics                  | `capture(event)` from `src/lib/analytics.ts`, the one module that imports the SDK                     | the analytics SDK imported anywhere else                                  |

@@ -69,7 +69,32 @@ export function assemble({ core, profiles }) {
     }
   }
   const body = core.replace(/^<!-- profile: (\S+) -->$/gm, (_, id) => fillSlot({ id, profiles }))
-  return renumberChecklist(lf(body).replace(/\n{3,}/g, '\n\n'))
+  const assembled = renumberChecklist(lf(body).replace(/\n{3,}/g, '\n\n'))
+  return assembled.replace(/^<!-- contents -->$/m, () => contentsFor(assembled))
+}
+
+/**
+ * Lists every numbered section with its subsections, linked by the anchors GitHub
+ * and editors derive from the headings, so a reader or agent can jump to the rules
+ * for the change at hand without reading the whole file.
+ */
+function contentsFor(text) {
+  const lines = []
+  for (const m of text.matchAll(/^(#{2,3}) (.+)$/gm)) {
+    const [, level, title] = m
+    const link = `[${title}](#${anchorFor(title)})`
+    if (level === '##' && /^\d+\. /.test(title)) lines.push(`- ${link}`)
+    else if (level === '###' && lines.length > 0) lines[lines.length - 1] += ` · ${link}`
+  }
+  return lines.join('\n')
+}
+
+// GitHub's heading anchor: lowercase, punctuation dropped, each space a hyphen.
+function anchorFor(title) {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9 _-]/g, '')
+    .replace(/ /g, '-')
 }
 
 /** Parses a profile file: front matter (name, title, summary) and its slot blocks. */

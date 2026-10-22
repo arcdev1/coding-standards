@@ -26,9 +26,16 @@ const profileDir = join(ROOT, 'standard/profiles')
 const loadProfile = (name) =>
   parseProfile({ text: readFileSync(join(profileDir, `${name}.md`), 'utf8') })
 
+// Past this many lines, retro-style reviews ask for navigation pointers, and every
+// review that reads the whole file pays for its length.
+const LINE_BUDGET = 1000
+
 // Every profile must assemble on its own; assemble() throws on an unknown slot.
 for (const file of readdirSync(profileDir).filter((f) => f.endsWith('.md'))) {
-  assemble({ core, profiles: [loadProfile(file.replace(/\.md$/, ''))] })
+  const name = file.replace(/\.md$/, '')
+  const lines = assemble({ core, profiles: [loadProfile(name)] }).split('\n').length
+  const over = lines > LINE_BUDGET ? `  (warning: over the ${LINE_BUDGET}-line budget)` : ''
+  console.log(`  ${name.padEnd(16)} ${String(lines).padStart(5)} lines${over}`)
 }
 
 const built = NOTE + assemble({ core, profiles: [loadProfile('tanstack-start')] })

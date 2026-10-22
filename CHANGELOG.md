@@ -7,6 +7,20 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 2.1.1 — 2026-10-22
+
+- Every assembled copy now opens with a generated **Contents** list linking each
+  numbered section and its subsections, and "How to use this document" gains a table
+  mapping each kind of change to the sections to read. Together they are the navigation
+  pointers the `retro` skill asks for once a standards file passes 1,000 lines.
+- "How this standard relates to a project's own docs" now says where a new rule goes: a
+  rule only this project needs goes in its local profile, one every project needs goes
+  upstream, and the generated copy is never edited. This gives `retro` and `correct`
+  a target that `standards:check` accepts.
+- Removed text the `tanstack-start` profile repeated from the core (§1, §5, §5.2, §7.2).
+  `scripts/build.mjs` prints each profile's assembled length and warns above 1,000 lines.
+- PATCH: wording and navigation only; nothing that passed review fails now.
+
 ## 2.1.0 — 2026-10-22
 
 - Split the standard into a language-neutral **core** (`standard/core.md`) and **stack

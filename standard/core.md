@@ -16,6 +16,10 @@ _Current-state document — edit it in place, and keep it the single source. Rec
 the reasoning behind a change where your team keeps decisions (an ADR log), not
 in this file's prose._
 
+## Contents
+
+<!-- contents -->
+
 ## How this standard relates to a project's own docs
 
 This file is the **portable rule set** — copy it into a project and it stands
@@ -23,7 +27,9 @@ alone. On top of it a project keeps two current-state companions:
 **`docs/conventions/`**, the same rules as worked examples against that app's own
 domain (each linking its decision record), and **`docs/adr/`**, short records of
 what was decided and why. The standard states the rule, a convention shows it in the
-codebase, the ADR says why. Conventions and code comments are current-state: edit
+codebase, the ADR says why. A rule only this project needs goes in its **local
+profile**, which the sync assembles into this file; a rule every project needs goes
+upstream as a change to the canonical standard. Never edit the generated copy. Conventions and code comments are current-state: edit
 them in place and let git hold the history. Do not write "used to" or "previously"
 into a comment; what changed lives in git and, where it was a decision, in an ADR.
 
@@ -48,7 +54,18 @@ stack rules under each section are specific to it.
 ## How to use this document
 
 - **Writing code:** read [§0](#0-first-principle-idiomatic-stack-first) and the
-  section for the layer you're touching before you start.
+  sections for the change at hand before you start:
+
+  | When you change…                                        | Read                    |
+  | ------------------------------------------------------- | ----------------------- |
+  | a page, component, or user flow                         | §10, §11.1              |
+  | a transport edge (server function, handler, command)    | §5.1, §6, §8, §9        |
+  | a service, rule, or validator                           | §5, §8, §11             |
+  | the schema or a migration                               | §7.1, §7.4              |
+  | a data-access module                                    | §7.2, §7.3              |
+  | a test                                                  | §11, §11.1              |
+  | anything                                                | §0, §2, §12, §14        |
+
 - **Reviewing code:** run the diff against the [review checklist](#14-review-checklist)
   and the [code-smell baseline](#13-code-smell-baseline), on top of the per-layer
   rules.

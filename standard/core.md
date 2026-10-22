@@ -105,7 +105,7 @@ complete ([§11.1](#111-end-to-end-coverage)).
 | Step        | Runs                                  |
 | ----------- | ------------------------------------- |
 | `check`     | the formatter, in check mode          |
-| `lint`      | the linter, warnings as errors        |
+| `lint`      | the linter                            |
 | `typecheck` | the type checker or compiler          |
 | `test`      | the unit/integration suite            |
 | `test:e2e`  | the end-to-end suite                  |

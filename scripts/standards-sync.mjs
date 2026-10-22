@@ -1,18 +1,33 @@
 #!/usr/bin/env node
 // standards-sync.mjs — vendored, self-contained sync runner for the Arcnovus
-// TanStack Start coding standard.
+// coding standard.
 //
 // Vendored from arcdev1/coding-standards; identical across every consumer repo.
 // Do not fork it locally — edit it upstream.
 //
+// The canonical standard is a core (standard/core.md) plus stack profiles
+// (standard/profiles/<name>.md). A consumer names its profiles in
+// <dest>/.standards.json; with no config file it gets the tanstack-start profile:
+//
+//   {
+//     "profiles": ["tanstack-start"],                      // or { "name", "scope" }
+//     "local": [{ "path": "docs/standards/local.md", "scope": "frontend/" }]
+//   }
+//
+// A local profile is a file in the consumer repo, written in the same slot format,
+// for the rules only that project has. The runner fills each `<!-- profile: ID -->`
+// marker in the core with the matching `<!-- slot: ID -->` block of every profile, in
+// order, and labels the blocks when more than one profile fills a slot.
+//
 // Modes:
-//   (default)  Fetch the canonical CODING_STANDARDS.md body + VERSION + commit SHA;
-//              if the local .standards-version SHA differs (or the file was
-//              hand-edited), write:
+//   (default)  Fetch VERSION, the core and the named profiles at the canonical main
+//              HEAD; if the local .standards-version SHA differs (or the file was
+//              hand-edited, or a local profile changed), write:
 //                <dest>/CODING_STANDARDS.md   generated header + body (no timestamp)
-//                <dest>/.standards-version    { version, sha, bodyHash, syncedAt }
-//   --check    Network-free: recompute the local body hash and compare it to
-//              .standards-version.bodyHash; fail if the vendored file was hand-edited.
+//                <dest>/.standards-version    { version, sha, profiles, bodyHash, … }
+//   --check    Network-free: recompute the local body hash (and each local profile's
+//              hash) and compare them to .standards-version; fail if the vendored
+//              file was hand-edited or a local profile changed without a re-sync.
 //
 // Fetch: uses `gh api` when available (authenticated — higher rate limit, and works
 // even if the canonical repo is private); otherwise falls back to unauthenticated
@@ -20,30 +35,101 @@
 // can sync the public canonical repo with no gh install and no token.
 //
 // dest defaults to process.cwd(); override with STANDARDS_DEST=<path> or --dest <path>.
+// --source <dir> reads the standard from a local checkout of the canonical repo
+// instead of fetching it, to rehearse a change before it is merged.
 
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 const CANONICAL_REPO = 'arcdev1/coding-standards'
 const DEFAULT_BRANCH = 'main'
 const STANDARD_PATH = 'CODING_STANDARDS.md'
+const CORE_PATH = 'standard/core.md'
+const PROFILE_DIR = 'standard/profiles'
 const VERSION_PATH = 'VERSION'
+const CONFIG_FILE = '.standards.json'
+const DEFAULT_PROFILES = ['tanstack-start']
 const HEADER_SIGNATURE = '<!--\n  GENERATED — DO NOT EDIT.'
 
+// ---- assembly: core + profiles → one standard ----
+
+/**
+ * Assembles the standard from the core text and the profiles, in order. Each
+ * profile is { name, title, scope?, slots: Map<id, text> }. Throws when a profile
+ * fills a slot the core does not have, so a typo can't drop rules silently.
+ */
+export function assemble({ core, profiles }) {
+  const markers = new Set([...core.matchAll(/^<!-- profile: (\S+) -->$/gm)].map((m) => m[1]))
+  for (const profile of profiles) {
+    for (const id of profile.slots.keys()) {
+      if (!markers.has(id)) throw new Error(`profile ${profile.name} fills unknown slot "${id}"`)
+    }
+  }
+  const body = core.replace(/^<!-- profile: (\S+) -->$/gm, (_, id) => fillSlot({ id, profiles }))
+  return renumberChecklist(lf(body).replace(/\n{3,}/g, '\n\n'))
+}
+
+/** Parses a profile file: front matter (name, title, summary) and its slot blocks. */
+export function parseProfile({ text, scope }) {
+  const source = lf(text)
+  const front = source.match(/^---\n([\s\S]*?)\n---\n/)
+  const meta = {}
+  if (front) {
+    for (const line of front[1].split('\n')) {
+      const kv = line.match(/^(\w+):\s*(.*)$/)
+      if (kv) meta[kv[1]] = kv[2].trim()
+    }
+  }
+  const slots = new Map()
+  for (const m of source.matchAll(/^<!-- slot: (\S+) -->\n([\s\S]*?)\n<!-- \/slot -->$/gm)) {
+    if (slots.has(m[1])) throw new Error(`profile ${meta.name ?? '?'} fills slot "${m[1]}" twice`)
+    slots.set(m[1], m[2].trim())
+  }
+  return { name: meta.name ?? 'local', title: meta.title ?? 'Local rules', scope, slots }
+}
+
+function fillSlot({ id, profiles }) {
+  const fills = profiles.filter((p) => p.slots.has(id))
+  if (fills.length === 0) return ''
+  if (fills.length === 1) return fills[0].slots.get(id)
+  // A checklist slot holds list items, which a label line would break.
+  if (id === '14') return fills.map((p) => p.slots.get(id)).join('\n')
+  return fills.map((p) => `${labelFor(p)}\n\n${p.slots.get(id)}`).join('\n\n')
+}
+
+function labelFor(profile) {
+  return profile.scope ? `**${profile.title}** (\`${profile.scope}\`):` : `**${profile.title}:**`
+}
+
+// §14 is one ordered list that profiles extend, so its numbers are reassigned.
+function renumberChecklist(text) {
+  const start = text.indexOf('\n## 14. ')
+  if (start === -1) return text
+  let n = 0
+  const tail = text.slice(start).replace(/^\d+\. /gm, () => `${++n}. `)
+  return text.slice(0, start) + tail
+}
+
+// ---- args, hashing, header ----
+
 function parseArgs(argv) {
-  const args = { check: false, dest: process.env.STANDARDS_DEST || process.cwd() }
+  const args = { check: false, dest: process.env.STANDARDS_DEST || process.cwd(), source: null }
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--check') args.check = true
     else if (argv[i] === '--dest') args.dest = argv[++i]
+    else if (argv[i] === '--source') args.source = resolve(argv[++i])
   }
   args.dest = resolve(args.dest)
   return args
 }
 
 // Normalize line endings so hashing is CRLF- and autocrlf-insensitive.
-const lf = (text) => text.replace(/\r\n/g, '\n')
+function lf(text) {
+  return text.replace(/\r\n/g, '\n')
+}
 
 function sha256(text) {
   return createHash('sha256').update(lf(text), 'utf8').digest('hex')
@@ -59,16 +145,37 @@ function stripHeader(fileText) {
   return idx === -1 ? text : text.slice(idx + HEADER_END.length)
 }
 
-function renderVendored(body, version, shortSha) {
+function renderVendored({ body, version, shortSha, profileNames }) {
   const header =
     `<!--\n` +
     `  GENERATED — DO NOT EDIT.\n` +
-    `  Source: ${CANONICAL_REPO} · ${STANDARD_PATH}\n` +
+    `  Source: ${CANONICAL_REPO} · standard/ (core + ${profileNames.join(', ')})\n` +
     `  Version: ${version} · commit: ${shortSha}\n` +
-    `  Edit upstream (${CANONICAL_REPO}) and re-run \`pnpm standards:sync\`.\n` +
-    `  Local edits here are overwritten on the next sync.\n` +
+    `  Edit upstream (${CANONICAL_REPO}), or this repo's local profile, and re-run\n` +
+    `  \`pnpm standards:sync\`. Local edits here are overwritten on the next sync.\n` +
     `-->\n\n`
   return header + body
+}
+
+// ---- config ----
+
+function readConfig(dest) {
+  const p = join(dest, CONFIG_FILE)
+  const raw = existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : {}
+  const profiles = (raw.profiles ?? DEFAULT_PROFILES).map((entry) =>
+    typeof entry === 'string' ? { name: entry } : entry,
+  )
+  const local = [].concat(raw.local ?? []).map((entry) =>
+    typeof entry === 'string' ? { path: entry } : entry,
+  )
+  return { profiles, local }
+}
+
+function readLocalProfiles({ dest, local }) {
+  return local.map((entry) => {
+    const text = readFileSync(join(dest, entry.path), 'utf8')
+    return { entry, text, hash: `sha256:${sha256(text)}` }
+  })
 }
 
 // ---- fetch: gh first (auth), then unauthenticated HTTPS (public) ----
@@ -82,16 +189,32 @@ function gh(pathArgs, { raw = false } = {}) {
   })
 }
 
-function fetchViaGh() {
-  const body = gh([`repos/${CANONICAL_REPO}/contents/${STANDARD_PATH}`], { raw: true })
-  const version = gh([`repos/${CANONICAL_REPO}/contents/${VERSION_PATH}`], { raw: true }).trim()
-  const sha = gh([
-    `repos/${CANONICAL_REPO}/commits?path=${STANDARD_PATH}&per_page=1`,
-    '-q',
-    '.[0].sha',
-  ]).trim()
-  if (!sha) throw new Error('gh returned an empty commit SHA')
-  return { body, version, sha, shortSha: sha.slice(0, 7) }
+function viaGh() {
+  return {
+    head: () => gh([`repos/${CANONICAL_REPO}/commits/${DEFAULT_BRANCH}`, '-q', '.sha']).trim(),
+    file: (path, ref) => gh([`repos/${CANONICAL_REPO}/contents/${path}?ref=${ref}`], { raw: true }),
+    lastCommit: (path, ref) => {
+      const out = gh([
+        `repos/${CANONICAL_REPO}/commits?path=${path}&sha=${ref}&per_page=1`,
+        '-q',
+        '.[0] | [.sha, .commit.committer.date] | @tsv',
+      ]).trim()
+      const [sha, date] = out.split('\t')
+      return { sha, date }
+    },
+  }
+}
+
+function viaCheckout(dir) {
+  const git = (args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim()
+  return {
+    head: () => git(['rev-parse', 'HEAD']),
+    file: (path) => readFileSync(join(dir, path), 'utf8'),
+    lastCommit: (path) => {
+      const [sha, date] = git(['log', '-1', '--format=%H%x09%cI', '--', path]).split('\t')
+      return { sha, date }
+    },
+  }
 }
 
 async function httpGet(url, { json = false } = {}) {
@@ -105,23 +228,44 @@ async function httpGet(url, { json = false } = {}) {
   return json ? res.json() : res.text()
 }
 
-async function fetchViaHttp() {
-  const raw = `https://raw.githubusercontent.com/${CANONICAL_REPO}/${DEFAULT_BRANCH}`
+function viaHttp() {
   const api = `https://api.github.com/repos/${CANONICAL_REPO}`
-  const body = await httpGet(`${raw}/${STANDARD_PATH}`)
-  const version = (await httpGet(`${raw}/${VERSION_PATH}`)).trim()
-  const commits = await httpGet(`${api}/commits?path=${STANDARD_PATH}&per_page=1`, { json: true })
-  const sha = Array.isArray(commits) && commits[0] && commits[0].sha
-  if (!sha) throw new Error('api.github.com returned no commit SHA')
-  return { body, version, sha, shortSha: sha.slice(0, 7) }
+  return {
+    head: async () => (await httpGet(`${api}/commits/${DEFAULT_BRANCH}`, { json: true })).sha,
+    file: (path, ref) => httpGet(`https://raw.githubusercontent.com/${CANONICAL_REPO}/${ref}/${path}`),
+    lastCommit: async (path, ref) => {
+      const commits = await httpGet(`${api}/commits?path=${path}&sha=${ref}&per_page=1`, { json: true })
+      const c = Array.isArray(commits) && commits[0]
+      return { sha: c && c.sha, date: c && c.commit.committer.date }
+    },
+  }
 }
 
-async function fetchCanonical() {
+/**
+ * Fetches the core, the named profiles, and VERSION at one main HEAD, plus the
+ * newest commit that touched any of them: the SHA this consumer pins.
+ */
+async function fetchCanonical({ profiles, source }) {
+  const paths = [CORE_PATH, ...profiles.map((p) => `${PROFILE_DIR}/${p.name}.md`)]
+  const attempt = async (source) => {
+    const head = await source.head()
+    if (!head) throw new Error('empty main HEAD SHA')
+    const [core, version, ...profileTexts] = await Promise.all([
+      source.file(CORE_PATH, head),
+      source.file(VERSION_PATH, head),
+      ...paths.slice(1).map((p) => source.file(p, head)),
+    ])
+    const touched = await Promise.all(paths.map((p) => source.lastCommit(p, head)))
+    const newest = touched.reduce((a, b) => (new Date(b.date) > new Date(a.date) ? b : a))
+    if (!newest.sha) throw new Error('no commit SHA for the standard')
+    return { core, version: version.trim(), profileTexts, sha: newest.sha, shortSha: newest.sha.slice(0, 7) }
+  }
+  if (source) return attempt(viaCheckout(source))
   try {
-    return fetchViaGh()
+    return await attempt(viaGh())
   } catch (ghErr) {
     try {
-      return await fetchViaHttp()
+      return await attempt(viaHttp())
     } catch (httpErr) {
       const ghMsg = (ghErr.stderr || ghErr.message || '').toString().trim().split('\n')[0]
       throw new Error(
@@ -133,6 +277,8 @@ async function fetchCanonical() {
     }
   }
 }
+
+// ---- modes ----
 
 function readLocalMeta(dest) {
   const p = join(dest, '.standards-version')
@@ -159,16 +305,36 @@ function runCheck(dest) {
     console.error(
       `standards:check FAILED — ${STANDARD_PATH} was hand-edited (body hash mismatch).\n` +
         `  expected ${meta.bodyHash}\n  got      ${localHash}\n` +
-        `This file is generated; edit upstream (${CANONICAL_REPO}) and re-run \`pnpm standards:sync\`.`,
+        `This file is generated; edit upstream (${CANONICAL_REPO}) or the local profile, ` +
+        `and re-run \`pnpm standards:sync\`.`,
     )
     process.exit(1)
+  }
+  const { local } = readConfig(dest)
+  const recorded = meta.localHashes ?? {}
+  for (const { entry, hash } of readLocalProfiles({ dest, local })) {
+    if (recorded[entry.path] !== hash) {
+      console.error(
+        `standards:check FAILED — local profile ${entry.path} changed since the last sync.\n` +
+          `Re-run \`pnpm standards:sync\` so ${STANDARD_PATH} includes it.`,
+      )
+      process.exit(1)
+    }
   }
   console.log(`standards:check OK — vendored ${STANDARD_PATH} matches v${meta.version} (${meta.sha.slice(0, 7)}).`)
 }
 
-async function runSync(dest) {
-  const { body, version, sha, shortSha } = await fetchCanonical()
+async function runSync({ dest, source }) {
+  const config = readConfig(dest)
+  const { core, version, profileTexts, sha, shortSha } = await fetchCanonical({ ...config, source })
+  const locals = readLocalProfiles({ dest, local: config.local })
+  const profiles = [
+    ...config.profiles.map((p, i) => parseProfile({ text: profileTexts[i], scope: p.scope })),
+    ...locals.map(({ entry, text }) => parseProfile({ text, scope: entry.scope })),
+  ]
+  const body = assemble({ core, profiles })
   const expectedBodyHash = `sha256:${sha256(body)}`
+  const localHashes = Object.fromEntries(locals.map(({ entry, hash }) => [entry.path, hash]))
   const mdPath = join(dest, STANDARD_PATH)
   const local = readLocalMeta(dest)
   const currentBodyHash = existsSync(mdPath)
@@ -176,36 +342,41 @@ async function runSync(dest) {
     : null
 
   // Skip only when the file is BOTH current (SHA matches) AND untampered (body
-  // matches). A hand-edit leaves the SHA equal but the body hash different, so
-  // this still repairs it — sync is self-healing, not just SHA-gated.
+  // matches). A hand-edit or a changed local profile leaves the SHA equal but the
+  // body hash different, so this still repairs it — sync is self-healing.
   if (local && local.sha === sha && currentBodyHash === expectedBodyHash) {
     console.log(`standards:sync — already up to date (v${version}, ${shortSha}). No changes.`)
     return
   }
 
+  const profileNames = profiles.map((p) => p.name)
   const meta = {
     version,
     sha,
     shortSha,
+    profiles: profileNames,
     bodyHash: expectedBodyHash,
+    localHashes,
     source: CANONICAL_REPO,
     syncedAt: new Date().toISOString(),
   }
-  writeFileSync(mdPath, renderVendored(body, version, shortSha))
+  writeFileSync(mdPath, renderVendored({ body, version, shortSha, profileNames }))
   writeFileSync(join(dest, '.standards-version'), JSON.stringify(meta, null, 2) + '\n')
 
   let action
   if (!local) action = `wrote v${version} (${shortSha})`
   else if (local.sha !== sha) action = `updated ${local.shortSha} → ${shortSha}`
-  else action = `repaired hand-edited file (v${version}, ${shortSha})`
-  console.log(`standards:sync — ${action} in ${dest}.`)
+  else action = `rebuilt (v${version}, ${shortSha})`
+  console.log(`standards:sync — ${action} with ${profileNames.join(' + ')} in ${dest}.`)
 }
 
-try {
-  const { check, dest } = parseArgs(process.argv.slice(2))
-  if (check) runCheck(dest)
-  else await runSync(dest)
-} catch (err) {
-  console.error(err.message || err)
-  process.exit(1)
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+  try {
+    const { check, dest, source } = parseArgs(process.argv.slice(2))
+    if (check) runCheck(dest)
+    else await runSync({ dest, source })
+  } catch (err) {
+    console.error(err.message || err)
+    process.exit(1)
+  }
 }

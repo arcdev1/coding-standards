@@ -7,6 +7,32 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 2.1.0 — 2026-10-22
+
+- Split the standard into a language-neutral **core** (`standard/core.md`) and **stack
+  profiles** (`standard/profiles/`). Each profile fills the core's numbered slots, so a
+  section number means the same thing on every stack. A consumer's vendored copy is
+  assembled from the core plus the profiles it names in `.standards.json`, plus any
+  repo-local profile for rules only that project has; with no config it gets
+  `tanstack-start`. The root `CODING_STANDARDS.md` is now build output (core +
+  `tanstack-start`, by `scripts/build.mjs`), and a CI check fails when it is stale or a
+  profile fills a slot the core lacks. Reason: chaos and xcog had to fork the whole file
+  to change their stack sections, so core rules such as §11.1 reached them only by hand.
+- Five profiles: `tanstack-start` (2.0.0's stack rules, moved without change),
+  `capacitor-pwa` (the offline-first client, distilled from chaos's fork),
+  `kotlin-spring` (from 2257etc's `service/pdf`), `python-fastapi` (from xcog's backend)
+  and `rust-cli` (from preview-rs).
+- §11.1 now names the interface per kind of app: a web UI through playwright-bdd as
+  before, a command-line tool by running its built binary, and a component with no UI of
+  its own through its consuming app's scenarios.
+- The TanStack checklist gains item 13 ("TanStack specifics?"), holding the stack details
+  items 3, 7, 8 and 10 named before; the smell pass becomes item 14.
+- Sync runner: `.standards.json` with scoped and local profiles, labelled blocks when
+  several profiles fill one section, `--check` also catching an edited local profile,
+  and `--source <dir>` to rehearse against a local checkout.
+- MINOR: nothing that passed review on a TanStack app fails now; the new profiles add
+  rules for stacks the standard didn't cover. Source: Bill, core-plus-profiles decision.
+
 ## 2.0.0 — 2026-10-22
 
 - Added §11.1 "End-to-end coverage". Every user-observable behavior (a page or flow,

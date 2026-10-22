@@ -1,9 +1,19 @@
+<!-- Built from standard/core.md + standard/profiles/tanstack-start.md by
+     scripts/build.mjs. Edit those files, not this one. -->
+
 # Coding standards
 
-A self-contained standard for building a full-stack web application on the
-TanStack Start stack. It assumes no other document: every rule states its
-mechanism and its reason inline, with an example where one helps. Copy this file
-into a project and it is the whole standard.
+The Arcnovus coding standard, in two layers. The **core** holds the rules that apply
+on every stack: how a project's records age, how modules read, how functions take
+and return values, how data is modeled, how failures surface, how behavior is tested,
+and when a change is done. A **stack profile** holds the mechanics for one stack: its
+toolchain, its framework's primitives, its file layout. A project's copy of this file
+is generated from the core plus the profiles that project uses, so the copy you are
+reading is the whole standard for this project. Every rule states its mechanism and
+its reason inline, with an example where one helps.
+
+Where a section carries stack rules, they follow the core rule under the same section
+number, so a section number means the same thing in every project.
 
 _Current-state document — edit it in place, and keep it the single source. Record
 the reasoning behind a change where your team keeps decisions (an ADR log), not
@@ -33,8 +43,8 @@ as if it were current. git is the recovery backstop, not the agent's read path.
 
 ## The stack these standards assume
 
-The rules are written for this stack. Swap a layer and re-read the affected
-section; the principles carry, the specifics may not.
+This copy is assembled for the stack below. The core rules carry to any stack; the
+stack rules under each section are specific to it.
 
 - **Framework:** TanStack Start (full-stack React), TanStack Router (file-based
   routing), React 19, TypeScript, Vite.
@@ -62,10 +72,18 @@ section; the principles carry, the specifics may not.
 ## 0. First principle: idiomatic stack first
 
 Before writing any cross-cutting capability — data fetching, caching, server
-state, forms, validation, routing, auth, HTTP calls, dates — use the primitive
-your framework already provides. Reinventing a framework primitive is a defect,
-not a matter of taste. An opinionated meta-framework has a canonical way to do
-each of these; find it and follow it.
+state, forms, validation, routing, auth, HTTP calls, serialization, dates, command-line
+parsing — use the primitive your framework or your language's established ecosystem
+already provides. Reinventing a framework primitive is a defect, not a matter of
+taste. An opinionated framework has a canonical way to do each of these; find it and
+follow it.
+
+If the right library isn't installed, propose adding it rather than hand-rolling a
+substitute. If a bespoke mechanism is genuinely needed, state why the idiomatic
+one doesn't fit before building it.
+
+Why: one canonical way per concern means every part of the app reads the same, and a
+fix in the primitive reaches every caller.
 
 The blessed primitive for each concern on this stack:
 
@@ -80,10 +98,8 @@ The blessed primitive for each concern on this stack:
 | Endpoint auth         | framework middleware         | a guard function called by hand in each handler |
 | UI components         | shadcn/ui over Radix         | hand-built dialogs, selects, menus              |
 
-If the right library isn't installed, propose adding it rather than hand-rolling a
-substitute. If a bespoke mechanism is genuinely needed, state why the idiomatic
-one doesn't fit before building it. Install shadcn components with the generator
-(`pnpm dlx shadcn@latest add <name>`) rather than hand-authoring what it emits.
+Install shadcn components with the generator (`pnpm dlx shadcn@latest add <name>`)
+rather than hand-authoring what it emits.
 
 The generator needs a **committed `components.json`** — a required, checked-in file,
 not a scaffolding by-product. Its canonical shape: `style: "new-york"`, `tsx: true`,
@@ -117,24 +133,30 @@ once — it repoints the local combiner so `lib/utils` re-exports `cn` from the 
 output share one implementation and removing any per-`add` fixup. Keep `lib/utils`
 for any project-specific helpers it also holds.
 
-Why: one canonical way per concern means every part of the app reads the same, and a
-fix in the primitive reaches every caller — while an app ported without its
-`components.json` can't run the generator at all, and a later `init` to create one
-silently reverts every local component and token.
+Why the generator rules: an app ported without its `components.json` can't run the
+generator at all, and a later `init` to create one silently reverts every local
+component and token.
 
 ---
 
 ## 1. Language and imports
 
+- **The strictest type checking the language offers, always.** The configuration is
+  in [§2](#2-formatting-lint-and-types-automated). Code that needs a strictness
+  setting switched off is a design smell, not a config problem.
+- **Import through a stable path from the project root** instead of deep relative
+  chains (`../../..`). Reserve relative imports for siblings inside the same slice.
+- **Name your exports.** A module's public entry points are named, so the import
+  name is stable and greppable, and the module states which names are its public
+  API.
+
 - **TypeScript with `strict` on, always.** The full strict configuration is in
-  [§2](#2-formatting-lint-and-types-automated). Code that needs a strictness flag
-  switched off is a design smell, not a config problem.
+  [§2](#2-formatting-lint-and-types-automated).
 - **`import type` for type-only imports.** With `verbatimModuleSyntax` on, a value
   import used only as a type is a build error. Split a mixed import into a value
   `import { … }` and a separate `import type { … }`.
-- **Use a stable internal import alias** instead of deep relative chains
-  (`../../..`). Map `#/*` to `./src/*` with a `package.json` subpath import, which
-  the bundler and TypeScript both honor:
+- **The stable import path is the `#/` alias.** Map `#/*` to `./src/*` with a
+  `package.json` subpath import, which the bundler and TypeScript both honor:
 
   ```jsonc
   // package.json
@@ -146,18 +168,35 @@ silently reverts every local component and token.
   { "compilerOptions": { "paths": { "#/*": ["./src/*"] } } }
   ```
 
-  Then `import { db } from '#/db'` from anywhere. Reserve relative imports for
-  siblings inside the same feature folder.
+  Then `import { db } from '#/db'` from anywhere.
 
-- **Name your exports.** Export named entry points from logic modules so the
-  import name is stable and greppable; avoid default exports outside the files a
-  framework convention requires them in (some route or config files).
+- **Named exports.** Export named entry points from logic modules; avoid default
+  exports outside the files a framework convention requires them in (some route or
+  config files).
 
 ---
 
 ## 2. Formatting, lint, and types (automated)
 
 These are machine-enforced. **Do not flag them in review** — run the command.
+
+**The gate.** Every project wires the same five steps under the same names, so
+people, agents, and CI call them the same way on every stack. The first four must
+pass on every commit. `test:e2e` takes longer and must pass before a change is
+complete ([§11.1](#111-end-to-end-coverage)).
+
+| Step        | Runs                                  |
+| ----------- | ------------------------------------- |
+| `check`     | the formatter, in check mode          |
+| `lint`      | the linter, warnings as errors        |
+| `typecheck` | the type checker or compiler          |
+| `test`      | the unit/integration suite            |
+| `test:e2e`  | the end-to-end suite                  |
+
+The stack rules below name the tool behind each step and how it is invoked: a
+package script, a Gradle task, a cargo or uv command. A step the toolchain folds into
+another (a compiler that type-checks as it builds) keeps its name and runs the
+folded command.
 
 **Prettier** — no semicolons, single quotes, trailing commas everywhere:
 
@@ -186,21 +225,32 @@ import ordering; don't reintroduce hand-review of it. **Keep `no-use-before-defi
 off** (or set `{ functions: false }` if you enable it) so the stepdown module
 order in [§5](#5-module-organization) stays legal.
 
-**The gate.** Wire five package scripts so the names are stable. The first four
-must pass on every commit. `test:e2e` takes longer and must pass before a change is
-complete ([§11.1](#111-end-to-end-coverage)).
+The five steps are package scripts:
 
 | Script      | Runs                                              |
 | ----------- | ------------------------------------------------- |
-| `check`     | Prettier in check mode                            |
-| `lint`      | ESLint                                            |
+| `check`     | `prettier --check .`                              |
+| `lint`      | `eslint`                                          |
 | `typecheck` | `tsc --noEmit`                                    |
-| `test`      | the unit/integration suite                        |
+| `test`      | `vitest`, the unit/integration suite              |
 | `test:e2e`  | `bddgen && playwright test`, the end-to-end suite |
 
 ---
 
 ## 3. Naming
+
+- **Follow the language's naming conventions** for files, modules, types, and
+  functions. The stack rules below state them.
+- **The service wears no role-tag — the bare slice name _is_ the service.** Every
+  other layer in a slice carries a layer suffix
+  ([§4](#4-project-structure)), so the unmarked module is the unambiguous front
+  door: the slice's only entry point
+  ([§8](#8-domain--service-layer-and-validation)). Add no `service` tag in either
+  position; the _absence_ of a suffix is the signal that says "this is the front
+  door."
+- **Identifiers reveal intent.** A function, variable, or type whose name doesn't
+  say what it does or holds is a [Mysterious Name](#13-code-smell-baseline). Rename
+  it; if no honest name comes, the design underneath is murky.
 
 **Dash names a module; the dot marks structure.**
 
@@ -213,32 +263,41 @@ complete ([§11.1](#111-end-to-end-coverage)).
   and inside a file-based routes folder a dot already means a route segment — one
   character with two meanings. Rule of thumb: if a tool globs the suffix, use a
   dot; otherwise use a dash.
-- **The service wears no role-tag — the bare slice name _is_ the service.** Every
-  other layer in a slice carries a dash suffix (`order-repo`, `order-fns`,
-  `order-validators`), so the unmarked module is the unambiguous front door:
-  `order.ts` is the `order` service, the slice's only entry point
-  ([§4](#4-project-structure), [§8](#8-domain--service-layer-and-validation)). Add
-  no `-service` tag in either position — `order-service.ts` and `service-order.ts`
-  are both redundant, and the _absence_ of a suffix is the signal that says "this
-  is the front door." (Extends the dotted-tag ban above: no `*.service.ts`, and no
-  `-service` either.)
-- **Identifiers reveal intent.** A function, variable, or type whose name doesn't
-  say what it does or holds is a [Mysterious Name](#13-code-smell-baseline). Rename
-  it; if no honest name comes, the design underneath is murky.
+- **The service file is the bare slice name**: `order.ts` is the `order` service.
+  Every other layer carries a dash suffix (`order-repo`, `order-fns`,
+  `order-validators`). `order-service.ts` and `service-order.ts` are both redundant,
+  and so is `*.service.ts`.
 
 ---
 
 ## 4. Project structure
 
-**One folder per slice under `src/`; the filename suffix names the layer.** A
-slice is one bounded concern — an aggregate (`order/`, `invoice/`), a feature or
-process (`export/`, `ingestion/`), or a value concept (`money/`). Everything about
-it lives in its folder, named for its entity in the singular using the project's
-own domain vocabulary — the word the glossary already uses. A slice that names a
-process, not an entity, is exempt from the singular rule.
+**One folder per slice; the name carries the layer.** A slice is one bounded concern
+— an aggregate (`order`, `invoice`), a feature or process (`export`, `ingestion`),
+or a value concept (`money`). Everything about it lives in its folder (or package,
+or module), named for its entity in the singular using the project's own domain
+vocabulary — the word the glossary already uses. A slice that names a process, not
+an entity, is exempt from the singular rule. Inside a slice, each layer has a fixed
+name, so a reader knows what a file is before opening it; the stack rules below give
+the layer names.
 
-Inside a slice, the suffix carries the layer, so a reader knows what a file is
-before opening it:
+- **A satellite earns its file.** A pure rule with one consumer folds into that
+  consumer, its unit test keeping its own file and importing the host module. Split
+  a satellite out only when folding would cost a fast pure test or collapse a
+  deliberate boundary.
+- **Tests sit beside their module, or mirror its path where the toolchain expects a
+  separate test tree**, named after it.
+- **Cross-cutting code that no slice owns has fixed homes**, listed in the stack
+  rules below. Move a module out of a shared home the moment it gains a single owning
+  slice.
+
+**Dependency direction is a design constraint.** Slices depend downward toward
+shared kernels; a composition root (the auth singleton) may import the slices it
+wires, but slices do not cycle through each other. Two slices importing each other
+at runtime means one is misfiled.
+
+Slices live under `src/`, one folder each. Inside a slice, the filename suffix names
+the layer:
 
 | File                    | Layer                                                                                            |
 | ----------------------- | ------------------------------------------------------------------------------------------------ |
@@ -250,7 +309,8 @@ before opening it:
 
 A single aggregate is the worked example — for `order/`: `order-validators.ts`,
 `order.ts`, `order-repo.ts`, `order-fns.ts`, `order-queries.ts`, each test beside
-its module. Copy its shape for a new slice.
+its module (`order.test.ts`, `order-validators.test.ts`). Copy its shape for a new
+slice.
 
 - **No barrels.** A slice holds server-only modules (`-repo`, the service) beside
   its one client-safe module (`-validators`), so an `index.ts` re-export would pull
@@ -259,14 +319,8 @@ its module. Copy its shape for a new slice.
 - **One client-safe module per aggregate** — the `-validators.ts`. It answers "what
   may the browser import from this slice?" Enumerate the client-safe set in a
   manifest the boundary test reads, so the test enforces the split.
-- **A satellite earns its file.** A pure rule with one consumer folds into that
-  consumer, its unit test keeping its own file and importing the host module. Split
-  a satellite out only when folding would cost a fast pure test or collapse a
-  deliberate boundary.
-- **Tests sit beside their module**, named after it (`order.test.ts`,
-  `order-validators.test.ts`).
 
-**Cross-cutting code that no slice owns has fixed homes:**
+The fixed homes for cross-cutting code:
 
 | Folder            | Holds                                                                                                                        |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------- |
@@ -277,25 +331,25 @@ its module. Copy its shape for a new slice.
 | `src/lib/`        | Cross-cutting kernels and infra with no owning slice: id, the server-only guard, the query client, theme, the datetime kernel, the `Result` type ([§5.2](#52-return-values)). A large kernel gets its own subfolder (`lib/datetime/`), no barrel. |
 | `src/test/`       | Shared test helpers and fixtures.                                                                                            |
 
-Move a module out of `lib/` the moment it gains a single owning slice.
-
-**Dependency direction is a design constraint.** Slices depend downward toward
-shared kernels; a composition root (the auth singleton) may import the slices it
-wires, but slices do not cycle through each other. Two slices importing each other
-at runtime means one is misfiled.
-
 ---
 
 ## 5. Module organization
 
-**Read top-down: exports first, helpers beneath, leaves last.** TypeScript hoists
-`function` declarations, so definition order is a free choice. Choose the order
+**Read top-down: exports first, helpers beneath, leaves last.** Choose the order
 that puts a module's purpose before its mechanism.
 
 A module opens with its doc comment, then its **exported entry points, highest
 level first**, then each helper **directly beneath the function that first calls
 it**, down to leaf helpers at the foot. A reader moving top to bottom meets what
 the module does before how it does it.
+
+- **Every module opens with a doc comment** stating what it does, and — for a
+  server-only module — its boundary.
+- **Scope.** This governs modules that carry logic (service, data-access, and
+  library layers). UI component files keep their framework's component-first idiom,
+  which is already top-down. Test files are exempt.
+
+TypeScript hoists `function` declarations, so definition order is a free choice:
 
 ```ts
 /**
@@ -312,8 +366,7 @@ function cleanOrder(input: OrderInput): CleanOrder {
 }
 ```
 
-- **Every module opens with a `/** … */` doc comment** stating what it does, and —
-  for a server-only module — its boundary.
+- **Every module opens with a `/** … */` doc comment.**
 - **Hoist with `function` declarations.** A helper that sits above its first caller
   must be a `function` declaration (hoisted and callable before its own line), not
   a `const` arrow (which lives in a temporal dead zone and throws if called
@@ -322,20 +375,38 @@ function cleanOrder(input: OrderInput): CleanOrder {
   separator only from inside a function body (deferred to call time), or place it
   above any top-level code that reads it. Types are erased and carry no ordering
   constraint.
-- **Scope.** This governs `.ts` modules that carry logic (service, data-access,
-  and library layers). Component files keep their component-first idiom, which is
-  already top-down. Test files are exempt.
+- **Scope.** Component files keep their component-first idiom.
 
 ### 5.1 Function signatures
 
-**Prefer a single options object over positional parameters in the code you
-write.** A named object reads at the call site without counting arguments, takes
-a new field without reordering every caller, and matches the shapes already in
-this standard — the service's `placeOrder({ context, input })`
-([above](#5-module-organization)) and the data-access `{ context, query }`
-([§7.2](#72-data-access-modules-repositories)). This governs any function you
-author — service, data-access, library, and client-side utilities alike, server
-or browser. The one exception is a signature a framework already owns (below).
+**Prefer one named-argument form over positional parameters in the code you
+write.** A named argument reads at the call site without counting arguments, takes a
+new field without reordering every caller, and matches the shapes already in this
+standard: the service's `placeOrder({ context, input })`
+([§5](#5-module-organization)) and the data-access `{ context, query }`
+([§7.2](#72-data-access-modules-repositories)). The form is the language's own: an
+options object, keyword-only parameters, or named arguments, as the stack rules
+below say. This governs any function you author — service, data-access, library,
+and client-side utilities alike. The one exception is a signature a framework
+already owns (below).
+
+- **A single, obvious argument stays positional.** One well-named parameter is
+  already self-documenting, so wrapping it earns nothing: `cleanOrder(input)` stays
+  `cleanOrder(input)`. Reach for the named form at the second parameter — or at the
+  first when a boolean or another field is already coming. The data-access layer is
+  stricter and always takes the named form, even for a lone criterion
+  ([§7.2](#72-data-access-modules-repositories)).
+- **A framework-owned signature follows the framework, never this rule.** Where a
+  framework hands your function its arguments (a request handler, a component, a
+  hook, a route loader, a middleware, an event callback), use the shape it passes;
+  the first principle ([§0](#0-first-principle-idiomatic-stack-first)) decides the
+  tie. This is not a server/client split; it's about who owns the signature.
+
+Why: one call convention across the code you write means a reader learns argument
+shapes once; deferring to the framework where it owns the signature keeps the code
+reading as idiomatic for its framework, not a house dialect layered on top.
+
+The named-argument form is **a single options object**:
 
 ```ts
 // ✗ positional — the call site is a puzzle: reconcile(order, true, false)
@@ -349,41 +420,26 @@ export function reconcile(opts: {
 }) {}
 ```
 
-- **A single, obvious argument stays positional.** One well-named parameter is
-  already self-documenting, so wrapping it earns nothing: `cleanOrder(input)`
-  ([above](#5-module-organization)) stays `cleanOrder(input)`, not
-  `cleanOrder({ input })`. Reach for the object at the second parameter — or at
-  the first when a boolean or another field is already coming. The data-access
-  layer is stricter and always takes the object, even for a lone criterion
-  ([§7.2](#72-data-access-modules-repositories)).
+The framework-owned signatures on this stack:
 
-- **A framework-owned signature follows the framework, never this rule.** Where
-  a framework hands your function its arguments, use the shape it passes — the
-  first principle ([§0](#0-first-principle-idiomatic-stack-first)) decides the
-  tie. This is not a server/client split; it's about who owns the signature:
-  - **TanStack server functions** take input through `.validator(schema)` and
-    hand the handler the framework's `{ data, context }` object. Use it as
-    given; translate to your service's shape inside the body.
+- **TanStack server functions** take input through `.validator(schema)` and
+  hand the handler the framework's `{ data, context }` object. Use it as
+  given; translate to your service's shape inside the body.
 
-    ```ts
-    export const placeOrderFn = createServerFn({ method: 'POST' })
-      .validator(orderCreateSchema) //          input arrives as `data`
-      .handler(({ data, context }) => //         the framework's shape, not ours
-        placeOrder({ context, input: data }),
-      )
-    ```
-  - **React components take props; hooks take their conventional arguments.** A
-    component's single `props` object is already the idiom, and a hook keeps its
-    ordered arguments (`useThing(id, options)`). Don't reshape either into a
-    house options object. Component and hook files keep their own idiom
-    throughout ([§5](#5-module-organization), Scope).
-  - **Any other framework callback** — a route loader, a middleware, an event
-    handler — receives the arguments the framework defines. Match them.
-
-Why: one call convention across the code you write means a reader learns
-argument shapes once; deferring to the framework where it owns the signature
-keeps the app reading as idiomatic TanStack and React, not a house dialect
-layered on top.
+  ```ts
+  export const placeOrderFn = createServerFn({ method: 'POST' })
+    .validator(orderCreateSchema) //          input arrives as `data`
+    .handler(({ data, context }) => //         the framework's shape, not ours
+      placeOrder({ context, input: data }),
+    )
+  ```
+- **React components take props; hooks take their conventional arguments.** A
+  component's single `props` object is already the idiom, and a hook keeps its
+  ordered arguments (`useThing(id, options)`). Don't reshape either into a
+  house options object. Component and hook files keep their own idiom
+  throughout ([§5](#5-module-organization), Scope).
+- **Any other framework callback** — a route loader, a middleware, an event
+  handler — receives the arguments the framework defines. Match them.
 
 ### 5.2 Return values
 
@@ -391,22 +447,12 @@ layered on top.
 caller reads each field by name, and a new field breaks no existing caller. Never
 return a tuple or positional array from a function you write. A single obvious
 value stays bare: a finder returns its collection, a predicate returns its boolean.
-React hooks and other framework-owned shapes keep their own idiom
-([§5.1](#51-function-signatures)).
-
-```ts
-// ✗ a tuple: the caller has to remember which slot is which
-return [order, true]
-
-// ✓ a named object
-return { order, operation: 'insert' }
-```
+Framework-owned shapes keep their own idiom ([§5.1](#51-function-signatures)).
 
 **Return a `Result` when failure is an ordinary branch the direct caller handles.**
-TypeScript has no checked exceptions, so the codes a function can throw are
-invisible in its signature. A `Result` puts each failure in the return type, and the
-caller narrows on `error.code`, so the data a failure carries is typed where it is
-handled. Zod's `safeParse` is the model. Use it for:
+A thrown failure is invisible in a function's signature. A `Result` puts each
+failure in the return type, and the caller narrows on the failure's `code`, so the
+data a failure carries is typed where it is handled. Use it for:
 
 - **Classifying functions** that sort an input into one of several expected
   outcomes: a parse, a match, or a lookup whose "no match" or "ambiguous" is a normal
@@ -416,7 +462,50 @@ handled. Zod's `safeParse` is the model. Use it for:
 - **A service call the caller recovers from** by falling back, retrying with other
   input, or recording the failure and moving on.
 
-Define the type once, client-safe, in `src/lib/result.ts`:
+The project defines one `Result` shape, `ok` with a value or a failure with a
+`code`, and each function declares its own failure union with whatever data the
+caller needs to act on. The stack rules below give the shape.
+
+**Everywhere else, throw.** A `Result` stops at the direct caller:
+
+- **A failure that ends the request throws the app error**
+  ([§9](#9-errors-and-middleware)). If the caller's only move on a failed `Result`
+  would be to throw, throw at the source.
+- **A transport edge never returns a `Result`.** A server function, RPC, or HTTP
+  handler that receives a failed `Result` throws the app error for it, so the
+  client's cache, the router's error boundary, and the error mapping all see a
+  failure.
+- **A transaction aborts by throwing.** A transaction rolls back only when its
+  callback throws, so work inside a transaction that returns a failed `Result`
+  commits whatever it already wrote. Throw inside the transaction, and build the
+  `Result` outside it when the caller needs one.
+- **Data-access modules keep [§7.2](#72-data-access-modules-repositories).**
+  Readers are total and writers throw, so a data-access function never returns a
+  `Result`; the service classifies what a reader returned.
+- **Unexpected failures still throw.** A dropped connection or a bug propagates as
+  a throw. Never wrap arbitrary code in a catch-all to turn every error into a
+  `Result`.
+
+In a language without exceptions, "throw" means returning the project's error type
+and propagating it unchanged to the edge; the stack rules below say how.
+
+Why: a `Result` makes a failure part of the contract where the caller acts on it,
+and throwing everywhere else keeps the app on the error path that its framework and
+the error mapping already handle.
+
+React hooks and other framework-owned shapes keep their own idiom.
+
+```ts
+// ✗ a tuple: the caller has to remember which slot is which
+return [order, true]
+
+// ✓ a named object
+return { order, operation: 'insert' }
+```
+
+TypeScript has no checked exceptions, so the codes a function can throw are
+invisible in its signature. Zod's `safeParse` is the model for a `Result`. Define
+the type once, client-safe, in `src/lib/result.ts`:
 
 ```ts
 /** The outcome of a function whose failures are branches its caller handles. Client-safe. */
@@ -425,12 +514,11 @@ export type Result<T, E extends { code: string }> =
   | { ok: false; error: E }
 ```
 
-Each function declares its own failure union, with whatever data the caller needs
-to act on. Declare the return type and return plain literals; the compiler checks
-each literal against the declared type, so no `ok()` or `err()` constructors are
-needed. Add no Result library (neverthrow, Effect, and the like): their chaining API
-(`andThen`, `ResultAsync`) reads unlike the rest of a TanStack app, and narrowing on
-`ok` covers the need.
+Declare the return type and return plain literals; the compiler checks each literal
+against the declared type, so no `ok()` or `err()` constructors are needed. Add no
+Result library (neverthrow, Effect, and the like): their chaining API (`andThen`,
+`ResultAsync`) reads unlike the rest of a TanStack app, and narrowing on `ok` covers
+the need.
 
 ```ts
 export type OrderMatch = Result<
@@ -461,36 +549,27 @@ for (const row of rows) {
 return { applied, rejected }
 ```
 
-**Everywhere else, throw.** A `Result` stops at the direct caller:
-
-- **A failure that ends the request throws `AppError`**
-  ([§9](#9-errors-and-middleware)). If the caller's only move on `{ ok: false }`
-  would be to throw, throw at the source.
 - **A server function never returns a `Result`.** TanStack Query caches
   `{ ok: false }` as a successful response, the router's `errorComponent` never sees
-  it, and the §9 middleware maps no status. A handler that receives a failed
-  `Result` throws an `AppError` for it.
-- **A transaction aborts by throwing.** Drizzle rolls back only when the
-  transaction callback throws, so work inside `inTransaction` that returns
-  `{ ok: false }` commits whatever it already wrote. Throw inside the transaction,
-  and build the `Result` outside it when the caller needs one.
-- **Data-access modules keep [§7.2](#72-data-access-modules-repositories).**
-  Readers are total and writers throw, so a repo function never returns a `Result`;
-  the service classifies what a reader returned, as `matchOrder` does above.
-- **Unexpected failures still throw.** A dropped connection or a bug propagates as
-  a throw. Never wrap arbitrary code in `try/catch` to turn every error into a
-  `Result`.
-
-Why: a `Result` makes a failure part of the contract where the caller acts on it,
-and throwing everywhere else keeps the app on the error path that TanStack Query,
-the router, and the error middleware already handle.
+  it, and the [§9](#9-errors-and-middleware) middleware maps no status.
+- **Drizzle rolls back only when the transaction callback throws**, so work inside
+  `inTransaction` that returns `{ ok: false }` commits whatever it already wrote.
+- **Data-access modules never return a `Result`**: the service classifies what a
+  reader returned, as `matchOrder` does above.
+- **Never wrap arbitrary code in `try/catch`** to turn every error into a `Result`.
 
 ---
 
 ## 6. Server / client boundary
 
-**A server-only module never shares a file with client-imported code.** Only
-**server-function handler bodies** are stripped from the client bundle. A
+**Server-only code and secrets never reach a client.** A module that holds
+credentials, secrets, or a database connection is server-only. It never shares a
+file with code a client imports, and it fails loudly if it is ever loaded on the
+client, so a misplaced import breaks the build instead of shipping a secret. A
+component with no client of its own (an internal service, a CLI) has no such
+boundary.
+
+Only **server-function handler bodies** are stripped from the client bundle. A
 top-level singleton like `export const auth = betterAuth(…)` is **not** stripped,
 so if any client component imports anything from that file, the whole module —
 database credentials, auth secrets — ships to the browser.
@@ -534,164 +613,193 @@ Model so that invalid states can't be represented.
 
 - **No boolean columns.** A boolean can't grow a third state and usually flattens
   richer information into yes/no. Reach for:
-  - an **enum / status** (`pgEnum`) for a closed set of states — whether something
-    happened or what state it's in (deleted, verified, published). Make the state
-    explicit; don't infer it. Split enums so no table can hold a value that is
-    meaningless for it.
+  - an **enum / status** for a closed set of states — whether something happened or
+    what state it's in (deleted, verified, published). Make the state explicit;
+    don't infer it. Split enums so no table can hold a value that is meaningless for
+    it.
   - an **ordinal `position`** for "which is primary / what order" (below).
   - a **nullable foreign key** for "the chosen one" among children.
-- **A nullable timestamp is not a boolean substitute.** `deletedAt IS NULL` hides a
+- **A nullable timestamp is not a boolean substitute.** `deleted_at IS NULL` hides a
   two-valued flag in a temporal column and conflates "hasn't happened" with "time
   unknown", and it inherits every timestamp hazard (see [§7.3](#73-optimistic-locking)).
   A timestamp records _when_ an event happened; _whether_ it happened is state — an
   enum. When both matter, that's two columns.
-- **Ordered owned collections use an ordinal `position`.**
-  `position: smallint('position').notNull()` plus `unique(parentId, position)`.
-  Primary is the lowest position; the same column carries display order; no
-  `isPrimary` flag. Assign `position` from array order at write time — the parent's
-  data-access module owns it.
+- **Ordered owned collections use an ordinal `position`**: a non-null `smallint`
+  plus a unique constraint on `(parent_id, position)`. Primary is the lowest
+  position; the same column carries display order; no `is_primary` flag. Assign
+  `position` from array order at write time — the parent's data-access module owns
+  it.
 - **Uniqueness spanning nullable columns must be `NULLS NOT DISTINCT`** (Postgres
   15+). By default `null ≠ null`, so two otherwise-identical rows that share a
   `null` both slip through:
 
-  ```ts
-  unique('order_line_uq').on(t.orderId, t.sku, t.variant).nullsNotDistinct()
+  ```sql
+  UNIQUE NULLS NOT DISTINCT (order_id, sku, variant)
   ```
+
+In Drizzle: a status is a `pgEnum`; the ordinal is
+`position: smallint('position').notNull()` plus `unique(parentId, position)`; and a
+nullable unique constraint is
+
+```ts
+unique('order_line_uq').on(t.orderId, t.sku, t.variant).nullsNotDistinct()
+```
 
 ### 7.2 Data-access modules (repositories)
 
-Data access lives in server-only `*-repo.ts` modules: plain async functions over
-the ORM, free of business rules.
+Data access lives in server-only data-access modules: plain functions over the ORM
+or driver, free of business rules.
 
-- **One module per aggregate** (`order-repo.ts`), exporting plain functions that
-  own the SQL, so callers — server functions, route loaders — never hand-write
-  queries.
-- **One options object `{ context, query }`; no positional params.** Every exported
-  function takes a single argument with up to two keys:
-  - **`context`** carries cross-cutting concerns. `tx` is its only optional field:
-    an enlist-or-open transaction, so several calls compose atomically. Resolve the
-    connection through two shared helpers, `conn(context)` (returning
-    `context?.tx ?? db`) for reads and single writes and `inTransaction(context, work)`
-    for writers. When the module scopes rows by owner (below), that owner scope is a
+- **One module per aggregate**, exporting plain functions that own the SQL, so
+  callers — server functions, route loaders, handlers — never hand-write queries.
+- **One argument holding `context` and `query`; no positional params.** Every
+  exported function takes a single argument with up to two parts:
+  - **`context`** carries cross-cutting concerns. The transaction is its only
+    optional field: an enlist-or-open transaction, so several calls compose
+    atomically. When the module scopes rows by owner (below), that owner scope is a
     required field of a required `context`; a module with no such scope can leave
     `context` itself optional.
-  - **`query`** holds the call's own parameters, always as an object: the lookup
-    criteria (`{ email }`) or the write payload (`{ id, expectedVersion, input }`).
-
-  ```ts
-  type OwnerScope = { kind: 'owner'; ownerId: string } | { kind: 'all' }
-
-  export function findByEmail(opts: {
-    context: { scope: OwnerScope; tx?: Transaction } // scope is required
-    query: { email: string }
-  }) {
-    /* … WHERE email = :email AND <owner-scope clause> */
-  }
-  export function insertOrder(opts: {
-    context: { owner: string; tx?: Transaction } // owner stamped here, never the payload
-    query: { input: NewOrder } //                   NewOrder carries no ownerId
-  }) {
-    /* … */
-  }
-  ```
-
+  - **`query`** holds the call's own parameters, always as one named value: the
+    lookup criteria (`{ email }`) or the write payload
+    (`{ id, expectedVersion, input }`).
 - **Owner scope is a required, closed value on `context`, and fails closed by
   construction.** When rows belong to owners and a caller may see only its own, the
   scope travels as a required field of a required `context`, typed as a closed union
-  with no unset state. The union is
-  `{ kind: 'owner'; ownerId } | { kind: 'all' }`; the `all` case is reserved for a
-  caller the service has cleared to cross owners. Omitting the scope is a compile
-  error, and the `WHERE` clause is exhaustive over the union, so a value that defeats
-  the types matches no rows. Every read and write that could cross owners applies it,
-  the finders included, so a new query cannot leak across owners by forgetting a
-  filter. The scope is a value the service decides from the caller's permission; the
-  module applies the clause and never sees a role. Create takes its owner from
-  `context` the same way ([§8](#8-domain--service-layer-and-validation)).
-
-- **Server-only.** A data-access module imports the DB client (driver and
-  connection secrets), so it sits behind a server-function handler and is never
-  imported by a client component ([§6](#6-server--client-boundary)).
+  with no unset state: `{ kind: 'owner'; ownerId } | { kind: 'all' }`, the `all` case
+  reserved for a caller the service has cleared to cross owners. Omitting the scope
+  fails the type check, and the `WHERE` clause is exhaustive over the union, so a
+  value that defeats the types matches no rows. Every read and write that could cross
+  owners applies it, the finders included, so a new query cannot leak across owners
+  by forgetting a filter. The scope is a value the service decides from the caller's
+  permission; the module applies the clause and never sees a role. Create takes its
+  owner from `context` the same way ([§8](#8-domain--service-layer-and-validation)).
+- **Server-only.** A data-access module holds the database connection, so it sits
+  behind the transport edge and is never imported by client code
+  ([§6](#6-server--client-boundary)).
 - **No business rules here.** An invariant that can't be a database constraint
   belongs to the service layer above ([§8](#8-domain--service-layer-and-validation)).
   This layer does data, not policy.
 - **Reads are total; only writers throw.** A finder returns a collection and never
   throws — no match is an empty collection, not an error. Even a by-id lookup
-  returns a collection (`findMany`, not `findFirst`) so a should-be-impossible
-  duplicate surfaces instead of being masked by "take the first". Deletes are
-  idempotent (deleting an absent row is a no-op). Writers raise only for structural
-  reasons — an optimistic-lock conflict, or not-found when the caller named a
-  specific row to change — as `AppError` codes ([§9](#9-errors-and-middleware)).
+  returns a collection, so a should-be-impossible duplicate surfaces instead of
+  being masked by "take the first". Deletes are idempotent (deleting an absent row
+  is a no-op). Writers raise only for structural reasons — an optimistic-lock
+  conflict, or not-found when the caller named a specific row to change — as app
+  error codes ([§9](#9-errors-and-middleware)).
 - **Aggregate writes are transactional**, and on update **replace owned child
   collections wholesale** (delete + re-insert with fresh ordinals) rather than
   reconciling in place. Child rows are value objects with no identity worth
   preserving, and re-inserting sidesteps the in-place-reorder hazard from
   [§7.1](#71-schema-and-data-modeling).
 
+Data-access modules are server-only `*-repo.ts` files. Resolve the connection through
+two shared helpers, `conn(context)` (returning `context?.tx ?? db`) for reads and
+single writes and `inTransaction(context, work)` for writers. A by-id lookup uses
+`findMany`, not `findFirst`.
+
+```ts
+type OwnerScope = { kind: 'owner'; ownerId: string } | { kind: 'all' }
+
+export function findByEmail(opts: {
+  context: { scope: OwnerScope; tx?: Transaction } // scope is required
+  query: { email: string }
+}) {
+  /* … WHERE email = :email AND <owner-scope clause> */
+}
+export function insertOrder(opts: {
+  context: { owner: string; tx?: Transaction } // owner stamped here, never the payload
+  query: { input: NewOrder } //                   NewOrder carries no ownerId
+}) {
+  /* … */
+}
+```
+
+A data-access module imports the DB client (driver and connection secrets), so it
+sits behind a server-function handler and is never imported by a client component.
+Writers raise `AppError` codes.
+
 ### 7.3 Optimistic locking
 
 Guard full-record updates with a `version` integer and a compare-and-swap, never
 with a timestamp.
 
-- **A table that accepts full-record updates carries a lock column:**
-  `version: integer('version').default(0).notNull()`.
+- **A table that accepts full-record updates carries a lock column:** a non-null
+  `integer` `version`, default `0`.
 - **The update is a compare-and-swap.** The caller passes the `version` it last
   read; one statement checks it and bumps it:
 
-  ```ts
-  const rows = await tx
-    .update(order)
-    .set({ ...fields, version: sql`${order.version} + 1` })
-    .where(and(eq(order.id, id), eq(order.version, expectedVersion)))
-    .returning({ id: order.id })
-
-  if (rows.length === 0) {
-    // someone else won the race, or the row is gone → CONFLICT (409) / NOT_FOUND
-  }
+  ```sql
+  UPDATE "order"
+  SET <fields>, version = version + 1
+  WHERE id = $1 AND version = $2
+  RETURNING id
   ```
 
-  Because the compare and the increment are one statement, concurrent updates
-  can't interleave: exactly one racer's `UPDATE` matches.
+  No row back means someone else won the race, or the row is gone: `CONFLICT` (409)
+  or `NOT_FOUND`. Because the compare and the increment are one statement,
+  concurrent updates can't interleave: exactly one racer's `UPDATE` matches.
 
-- **Increment in SQL, never in app code.** A read-modify-write (`version: justRead
-  - 1`) reintroduces the race.
+- **Increment in SQL, never in app code.** A read-modify-write
+  (`version: justRead + 1`) reintroduces the race.
 - **Never use `updated_at` — or any timestamp — as the lock token.** Postgres
-  timestamps store microseconds; the JavaScript `Date` they round-trip through
-  holds only milliseconds, so `WHERE updated_at = <the Date you read>` matches zero
-  rows and every update spuriously conflicts. A monotonic integer has no precision,
-  timezone, or round-trip hazard.
+  timestamps store microseconds; a client-side date type that holds less (JavaScript's
+  `Date` holds milliseconds) round-trips to a different value, so
+  `WHERE updated_at = <the value you read>` matches zero rows and every update
+  spuriously conflicts. A monotonic integer has no precision, timezone, or
+  round-trip hazard.
+
+In Drizzle, the lock column is `version: integer('version').default(0).notNull()`,
+and the compare-and-swap is:
+
+```ts
+const rows = await tx
+  .update(order)
+  .set({ ...fields, version: sql`${order.version} + 1` })
+  .where(and(eq(order.id, id), eq(order.version, expectedVersion)))
+  .returning({ id: order.id })
+
+if (rows.length === 0) {
+  // someone else won the race, or the row is gone → CONFLICT (409) / NOT_FOUND
+}
+```
 
 ### 7.4 Migrations
 
-**Migrations are generated from the schema, never hand-written.** Change the
-Drizzle schema in `src/db/`, then let Drizzle Kit diff it and emit the SQL:
-`db:generate` writes the timestamped migration together with its snapshot and
-journal entry, and `db:migrate` applies the pending files. Commit the generated
-`.sql` and the `meta/` snapshot, but treat them as build output — do not hand-edit
-them. Editing the emitted SQL, or dropping in a loose migration file, desyncs the
-snapshot Drizzle diffs against, so the next `db:generate` produces a corrupt or
-duplicated diff. The schema is the source of truth; the migration is its compiled
-artifact.
+**Migrations are generated from the schema, never hand-written.** Change the schema
+definition, then let the migration tool diff it and emit the SQL. Commit the
+generated migration and its metadata, but treat them as build output — do not
+hand-edit them. Editing the emitted SQL, or dropping in a loose migration file,
+desyncs the snapshot the tool diffs against, so the next generation produces a
+corrupt or duplicated diff. The schema is the source of truth; the migration is its
+compiled artifact.
 
 **Reach for hand-written SQL only when the schema DSL genuinely can't express the
 change** — a data backfill, an index built `CONCURRENTLY`, a constraint or trigger
-Drizzle has no builder for. Even then, keep it inside the ledger: generate an empty,
-tracked migration with `pnpm db:generate --custom` and write the SQL into that file,
-so the journal stays ordered and the migration replays everywhere. A raw statement
-run straight against a database, outside a generated migration, is off the table —
-it leaves every other environment behind and can't be replayed.
+the schema DSL has no builder for. Even then, keep it inside the ledger: generate an
+empty, tracked migration with the tool and write the SQL into that file, so the
+journal stays ordered and the migration replays everywhere. A raw statement run
+straight against a database, outside a generated migration, is off the table — it
+leaves every other environment behind and can't be replayed.
 
-**Run the migration tool only through a package script; never call it directly.**
-Wrap every schema operation in a named script (`db:generate`, `db:migrate`,
-`db:push`, `db:studio`, …) and always go through it — not the bare CLI, not
-`pnpm exec`, not `pnpm dlx`. The script name is the stable interface; the command
-and its flags, env loading, and ordering behind it are free to change in one place
-and every caller (people, agents, CI) picks it up. This applies to agents too.
+**Run the migration tool only through a named script; never call it directly.** Wrap
+every schema operation in a named script (`db:generate`, `db:migrate`, …) and always
+go through it. The script name is the stable interface; the command and its flags,
+env loading, and ordering behind it are free to change in one place and every caller
+(people, agents, CI) picks it up. This applies to agents too.
+
+The schema lives in `src/db/`, and Drizzle Kit is the migration tool: `db:generate`
+writes the timestamped migration together with its snapshot and journal entry, and
+`db:migrate` applies the pending files. Commit the generated `.sql` and the `meta/`
+snapshot. For SQL the schema DSL can't express, generate an empty, tracked migration
+with `pnpm db:generate --custom`. Go through the package scripts (`db:generate`,
+`db:migrate`, `db:push`, `db:studio`, …), never the bare CLI, `pnpm exec`, or
+`pnpm dlx`.
 
 ---
 
 ## 8. Domain / service layer and validation
 
-The service layer sits between the edge (server functions, forms) and the
+The service layer sits between the edge (server functions, handlers, forms) and the
 data-access layer, and owns the rules neither of them can.
 
 - **The service is a deep, self-sufficient module.** Callers go through the service
@@ -699,35 +807,22 @@ data-access layer, and owns the rules neither of them can.
   rules can't be bypassed. The service alone guarantees a cleaned, normalized,
   rule-checked, owner-stamped result regardless of caller — which is why the
   integration tests call the service, not the HTTP edge ([§11](#11-testing)).
-- **Validators are pure, lenient, and shared.** Write one validation schema with
-  **no `.transform()`**, so its input and output types coincide and the single
-  schema drops into both the server-function validator and the form's `validators`.
-  Validate the **normalized** form so the schema accepts what a human types —
-  judge the trimmed/lowercased value, but return the raw string:
-
-  ```ts
-  // No transform → input type = output type. The service still owns canonicalization.
-  const email = z
-    .string()
-    .refine(
-      (v) => z.email().safeParse(v.trim().toLowerCase()).success,
-      'Enter a valid email address',
-    )
-  ```
-
-  A strict schema over the raw value (`z.email()` on `" ada@x.com "`) rejects input
-  a later clean would happily accept, leaking a normalization requirement onto the
-  form and the user.
-
+- **Validators are pure, lenient, and shared.** Write one validation schema that
+  does not transform its input, so its input and output types coincide and the
+  single schema serves both the transport edge's validator and the form. Validate
+  the **normalized** form so the schema accepts what a human types — judge the
+  trimmed, lowercased value, but return the raw string. A strict schema over the raw
+  value (an email check on `" ada@x.com "`) rejects input a later clean would happily
+  accept, leaking a normalization requirement onto the form and the user.
 - **Cleaning and normalization live in the service, not the schema.** Trimming,
   empty-to-null, case-folding, and any identity keys your unique indexes compare
   stay in the service — its single home for folding. The overlap between the
   schema's lenient check and the service's clean is deliberate defense-in-depth,
   and it is safe **only because the operations are idempotent**. A non-idempotent
   normalization must never be duplicated across the two layers this way.
-- **Stamp the owner from context, never the payload.** The inferred input type
-  carries no `ownerId`; the service takes it from the session on `context`. A
-  client can't assign ownership by editing its request.
+- **Stamp the owner from context, never the payload.** The input type carries no
+  owner id; the service takes it from the session on `context`. A client can't
+  assign ownership by editing its request.
 - **Uniqueness is a service pre-check plus a database index, never an async schema
   refine.** A check-then-insert probe is a time-of-check/time-of-use race; only the
   unique index actually enforces dedup. The pre-check exists for a friendly error;
@@ -739,67 +834,72 @@ data-access layer, and owns the rules neither of them can.
 
   **`*Payload` → `*Draft` → `*Write` / `*Insert` → `*Aggregate`**
 
-  ```ts
-  type OrderCreatePayload = z.infer<typeof orderCreateSchema> // untrusted wire input (no ownerId)
-  type OrderDraft = /* … */ //                                    service clean/fold seam
-  type OrderLineInsert = /* … */ //                               one-table row insert
-  type OrderCreateWrite = /* … */ //                              aggregate write-request (root + lines)
-  type OrderAggregate = /* … */ //                                fully-loaded read model
-  ```
-
-  `*Payload` is untrusted and carries no owner id or derived column, so a leak into
-  the wire shape is obvious on sight; `*Insert` is one table's row and `*Write` is
-  the whole aggregate. Keep the schema **values** unsuffixed (`orderCreateSchema`);
-  only the inferred type aliases carry the suffix. Read-model (`*Aggregate`), form
-  (`*FormValues`), and helper types (a `Pick`, the identity fold, query criteria)
+  `*Payload` is untrusted wire input and carries no owner id or derived column, so a
+  leak into the wire shape is obvious on sight; `*Draft` is the service's
+  clean-and-fold seam; `*Insert` is one table's row and `*Write` is the whole
+  aggregate; `*Aggregate` is the fully loaded read model. Keep schema **values**
+  unsuffixed (`orderCreateSchema`); only the types carry the suffix. Form
+  (`*FormValues`) and helper types (a projection, the identity fold, query criteria)
   keep their names.
 
 Where each concern lives:
 
-| Concern                                                                | Home                                                           | Authority    |
-| ---------------------------------------------------------------------- | -------------------------------------------------------------- | ------------ |
-| Shape + format (lenient)                                               | the shared schema, run at the server-fn validator and the form | the schema   |
-| Cleaning (trim, empty→null, case-normalize)                            | the service                                                    | the service  |
-| Identity normalization (the keys unique indexes compare)               | the service (single home for folding)                          | the service  |
-| Cross-field domain rule (e.g. "an order needs at least one line item") | the service                                                    | the service  |
-| Uniqueness                                                             | service pre-check (friendly error) + DB unique index           | the DB index |
+| Concern                                                                | Home                                                          | Authority    |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------- | ------------ |
+| Shape + format (lenient)                                               | the shared schema, run at the transport edge and the form     | the schema   |
+| Cleaning (trim, empty→null, case-normalize)                            | the service                                                   | the service  |
+| Identity normalization (the keys unique indexes compare)               | the service (single home for folding)                         | the service  |
+| Cross-field domain rule (e.g. "an order needs at least one line item") | the service                                                   | the service  |
+| Uniqueness                                                             | service pre-check (friendly error) + DB unique index          | the DB index |
+
+The shared schema is Zod, with **no `.transform()`**, so the one schema drops into
+both the server-function validator and the form's `validators`:
+
+```ts
+// No transform → input type = output type. The service still owns canonicalization.
+const email = z
+  .string()
+  .refine(
+    (v) => z.email().safeParse(v.trim().toLowerCase()).success,
+    'Enter a valid email address',
+  )
+```
+
+The write-type family, with the inferred types carrying the suffix:
+
+```ts
+type OrderCreatePayload = z.infer<typeof orderCreateSchema> // untrusted wire input (no ownerId)
+type OrderDraft = /* … */ //                                    service clean/fold seam
+type OrderLineInsert = /* … */ //                               one-table row insert
+type OrderCreateWrite = /* … */ //                              aggregate write-request (root + lines)
+type OrderAggregate = /* … */ //                                fully-loaded read model
+```
 
 ---
 
 ## 9. Errors and middleware
 
-Deliberate failures that end a request are thrown as a typed `AppError` carrying a
-machine-readable code; global middleware maps the code to an HTTP status.
+Deliberate failures that end a request are thrown as a typed app error carrying a
+machine-readable code; one global handler maps the code to an HTTP status.
 
-- **Throw `new AppError(code, message?)` for every expected failure that ends the
+- **Throw the app error with a code for every expected failure that ends the
   request.** A failure the direct caller handles as an ordinary branch is returned
   as a `Result` instead ([§5.2](#52-return-values)). The **code** is the contract —
-  the rest of the system branches on `code`; `message` is for humans. Wrap an
-  underlying error through `options.cause`.
+  the rest of the system branches on `code`; the message is for humans. Wrap an
+  underlying error as the app error's cause.
 
-  ```ts
-  export type ErrorCode =
-    | 'UNKNOWN' // no more specific reason — the 422 catch-all
-    | 'VALIDATION' // well-formed input that breaks a domain rule
-    | 'NOT_FOUND'
-    | 'NOT_AUTHENTICATED' // no valid session
-    | 'FORBIDDEN' // authenticated, but the role lacks the permission
-    | 'CONFLICT' // the write conflicts with existing state
+  | Code                | Meaning                                              |
+  | ------------------- | ---------------------------------------------------- |
+  | `UNKNOWN`           | no more specific reason — the 422 catch-all          |
+  | `VALIDATION`        | well-formed input that breaks a domain rule          |
+  | `NOT_FOUND`         | the named thing doesn't exist                        |
+  | `NOT_AUTHENTICATED` | no valid session                                     |
+  | `FORBIDDEN`         | authenticated, but the role lacks the permission     |
+  | `CONFLICT`          | the write conflicts with existing state              |
 
-  export class AppError extends Error {
-    readonly code: ErrorCode
-    constructor(code: ErrorCode, message?: string, options?: ErrorOptions) {
-      super(message ?? code, options)
-      this.code = code
-      this.name = new.target.name
-    }
-  }
-  ```
-
-- **An `AppError` is always 4xx.** It means the server worked and is telling the
-  caller what was wrong. A 5xx is reserved for a non-`AppError` throw (a real
-  failure), which the mapping middleware leaves untouched. Unmapped codes fall back
-  to 422.
+- **An app error is always 4xx.** It means the server worked and is telling the
+  caller what was wrong. A 5xx is reserved for any other throw (a real failure),
+  which the mapping leaves untouched. Unmapped codes fall back to 422.
 
   | Code                | Status         |
   | ------------------- | -------------- |
@@ -814,17 +914,44 @@ machine-readable code; global middleware maps the code to an HTTP status.
   system and schema can't express. Use `CONFLICT` for an optimistic-lock clash or a
   uniqueness violation — both are the write disagreeing with existing state.
 
+- **Map codes to statuses in one place.** One global error handler at the edge turns
+  an app error into its status. Domain code never names an HTTP status, and no
+  handler maps errors by hand.
 - **Cross-cutting request concerns are global middleware**, registered once at the
-  app entry point, not repeated in each handler.
-  - **Request middleware** runs on every server request (routes, SSR, server
-    functions). Use it for concerns spanning all requests: CSRF, request logging,
-    tracing.
-  - **Function middleware** wraps only server-function handlers. Use it when you
-    must catch or shape what a server function does — mapping a thrown `AppError`
-    to a status is function middleware, because a server-function throw is caught
-    and serialized by the framework before request middleware ever sees it.
-  - **Order is outer-to-inner.** Put the error-mapping middleware first in the
-    function chain so it wraps everything downstream.
+  app entry point, not repeated in each handler: CSRF, request logging, tracing,
+  error mapping.
+
+The app error is `AppError`, in `src/error/`. Throw `new AppError(code, message?)`
+and wrap an underlying error through `options.cause`:
+
+```ts
+export type ErrorCode =
+  | 'UNKNOWN' // no more specific reason — the 422 catch-all
+  | 'VALIDATION' // well-formed input that breaks a domain rule
+  | 'NOT_FOUND'
+  | 'NOT_AUTHENTICATED' // no valid session
+  | 'FORBIDDEN' // authenticated, but the role lacks the permission
+  | 'CONFLICT' // the write conflicts with existing state
+
+export class AppError extends Error {
+  readonly code: ErrorCode
+  constructor(code: ErrorCode, message?: string, options?: ErrorOptions) {
+    super(message ?? code, options)
+    this.code = code
+    this.name = new.target.name
+  }
+}
+```
+
+- **Request middleware** runs on every server request (routes, SSR, server
+  functions). Use it for concerns spanning all requests: CSRF, request logging,
+  tracing.
+- **Function middleware** wraps only server-function handlers. Use it when you
+  must catch or shape what a server function does — mapping a thrown `AppError`
+  to a status is function middleware, because a server-function throw is caught
+  and serialized by the framework before request middleware ever sees it.
+- **Order is outer-to-inner.** Put the error-mapping middleware first in the
+  function chain so it wraps everything downstream.
 - **Defining your own global-middleware entry point may disable the framework's
   auto-installed CSRF protection.** If it does, re-add CSRF explicitly, scoped to
   server-function calls, so page navigations and OAuth callbacks (legitimately
@@ -847,6 +974,7 @@ machine-readable code; global middleware maps the code to an HTTP status.
   and adopt a novel interaction only where it clearly serves them. Accessibility is
   a requirement: keyboard operation, visible focus, sufficient contrast, and
   labelled controls on every interactive element.
+
 - **Ship a public design-system route.** Carry a `/design-system` route that shows
   the app's tokens and components live, with the theme toggle, so both themes stay
   checkable and the component set has one home.
@@ -885,9 +1013,9 @@ machine-readable code; global middleware maps the code to an HTTP status.
   test-runner worker) so suites run in parallel without colliding. Add a guard that
   throws before any query if the resolved connection string points outside the
   test-database family, so a run can never touch dev data.
-- **Never mock the database or substitute an in-memory shim** (such as PGLite). Run
-  against the same engine you ship on (PostgreSQL), so tests exercise real
-  constraints, types, and transactions.
+- **Never mock the database or substitute an in-memory shim** (such as PGLite or
+  SQLite). Run against the same engine you ship on (PostgreSQL), so tests exercise
+  real constraints, types, and transactions.
 - **Assert external behavior through a module's exported API**, at the highest
   existing seam — the service for an aggregate — never private internals or the
   order of declarations inside a file. A refactor that preserves behavior must not
@@ -901,17 +1029,23 @@ machine-readable code; global middleware maps the code to an HTTP status.
 ### 11.1 End-to-end coverage
 
 **Every user-observable behavior is specified in a Gherkin `.feature` file and
-exercised end to end through playwright-bdd.** A behavior is user-observable when a
-user can see it or cause it through the running app: a page or flow, a validation
-message, an error or empty state, a permission denial, a redirect, an email or file
-the app sends. The feature file is the specification of that behavior. The
-scenario, run in a real browser against the real server and an isolated database,
-is the evidence that it works.
+exercised end to end through the interface the user touches.** A behavior is
+user-observable when a user can see it or cause it through the running app: a page
+or flow, a validation message, an error or empty state, a permission denial, a
+redirect, an email or file the app sends, a command's output and exit status. The
+feature file is the specification of that behavior. The scenario, run against the
+real server and an isolated database, is the evidence that it works.
+
+- **A web UI is exercised in a real browser through playwright-bdd.**
+- **A command-line tool is exercised by running its built binary**, with the runner
+  the stack rules name.
+- **A component with no interface of its own** (an internal service, a worker, a
+  library) reaches users through an app, so that app's scenarios cover what users
+  can observe. The component's own tests follow its stack rules.
 
 **A change is complete only when its behavior is in a feature file and the scenario
-passes.** Unit tests, integration tests, and a manual check in the browser do not
-meet this bar on their own. Each kind of change updates the feature files in the
-same change set:
+passes.** Unit tests, integration tests, and a manual check do not meet this bar on
+their own. Each kind of change updates the feature files in the same change set:
 
 - **A new feature** adds the scenarios that describe it.
 - **A change to existing behavior** edits the scenarios that describe it.
@@ -928,17 +1062,16 @@ before merge still applies.
 
 **A skipped scenario covers nothing.** A scenario tagged `@skip` or `@fixme`, or one
 with an undefined step, does not count as coverage. A change that skips a scenario
-to get the suite green is incomplete. Keep playwright-bdd's default
-`missingSteps: 'fail-on-gen'` so an undefined step stops generation.
+to get the suite green is incomplete. Configure the runner so an undefined step fails
+the run.
 
 **`@pending` marks a scenario written ahead of its code.** A scenario for behavior
 the app does not have yet may sit in a feature file tagged `@pending`. Exclude the
-tag at generation (`defineBddConfig({ tags: 'not @pending', … })`), so its
-undefined steps do not fail `bddgen`. A `@pending` scenario is a specification and
-counts as coverage for nothing. The change that builds the behavior removes the
-tag, and that change is complete only when the scenario runs and passes. A
-scenario for behavior the app already ships never carries `@pending`, and no other
-tag may exclude a scenario from the full run.
+tag where the runner selects scenarios, so its undefined steps do not fail the run.
+A `@pending` scenario is a specification and counts as coverage for nothing. The
+change that builds the behavior removes the tag, and that change is complete only
+when the scenario runs and passes. A scenario for behavior the app already ships
+never carries `@pending`, and no other tag may exclude a scenario from the full run.
 
 **Write steps in the domain's language, at the level of user intent.** A step
 states what the user does and sees in the glossary's vocabulary:
@@ -948,11 +1081,28 @@ the step definitions and leaves the feature file as written.
 
 **Each distinct outcome a user can see gets a scenario, and the inputs behind one
 outcome stay in unit tests.** A scenario proves the behavior is wired through the
-browser, the server function, the service, and the database. One scenario shows
+interface, the transport edge, the service, and the database. One scenario shows
 that an invalid email reaches the user as a field error, and the validator's unit
 test covers each malformed shape that produces it. Use a `Scenario Outline` when the
 variations are themselves visible to the user, such as a different message per
 role.
+
+**Run serially when scenarios share state.** Run scenarios one at a time when they
+share global state, and tag every record a scenario creates with a recognizable
+marker so a teardown step can sweep it from the reused E2E database.
+
+Why: a feature file states what the app does in words a user and a reviewer can
+check, and a passing scenario shows the app doing it with every layer wired
+together. Making both part of done means the specification is updated in the same
+change as the code it describes.
+
+playwright-bdd compiles the feature files into Playwright specs with `bddgen`.
+
+- **Undefined steps fail generation.** Keep playwright-bdd's default
+  `missingSteps: 'fail-on-gen'`.
+- **Exclude `@pending` at generation**: `defineBddConfig({ tags: 'not @pending', … })`,
+  so its undefined steps do not fail `bddgen`.
+- **Run serially with `workers: 1`** when scenarios share global state.
 
 | Path                            | Holds                                                  |
 | ------------------------------- | ------------------------------------------------------ |
@@ -960,21 +1110,12 @@ role.
 | `features/steps/`               | Step definitions and the shared BDD fixtures           |
 | `.features-gen/`                | `bddgen` output, gitignored                            |
 
-**Run serially when scenarios share state.** Set `workers: 1` when scenarios share
-global state, and tag every record a scenario creates with a recognizable marker so
-a teardown step can sweep it from the reused E2E database.
-
-Why: a feature file states what the app does in words a user and a reviewer can
-check, and a passing scenario shows the app doing it with every layer wired
-together. Making both part of done means the specification is updated in the same
-change as the code it describes.
-
 ---
 
 ## 12. Version control and workflow
 
-- **One package manager, used consistently.** This stack uses pnpm (`pnpx`, not
-  `npx`); don't mix in npm or yarn, whose lockfiles and install behavior diverge.
+- **One package manager per language, used consistently.** The stack rules below
+  name it. Don't mix in another, whose lockfile and install behavior diverge.
 - **Work on a feature branch; only the production merge needs a human.** An
   automated contributor may commit and push to its own feature branch without being
   asked. Merging into the **production-aligned branch** of an externally deployed app
@@ -995,6 +1136,8 @@ change as the code it describes.
   suite passes ([§11.1](#111-end-to-end-coverage)).
 - **Record cross-cutting decisions as ADRs** in the repository, so the reasoning is
   durable and these standards and the code stay consistent as the app grows.
+
+- **The package manager is pnpm** (`pnpx`, not `npx`); don't mix in npm or yarn.
 
 ---
 
@@ -1048,33 +1191,32 @@ agent attention on the rest.
    Don't hand-review anything these catch ([§2](#2-formatting-lint-and-types-automated)).
 2. **Stack-first?** No hand-rolled substitute for a blessed primitive
    ([§0](#0-first-principle-idiomatic-stack-first)).
-3. **Boundary intact?** No server-only code reachable from the client bundle; no
-   new barrel merging a server/client pair ([§6](#6-server--client-boundary)).
+3. **Boundary intact?** No server-only code or secret reachable from a client
+   ([§6](#6-server--client-boundary)).
 4. **Data rules?** No boolean columns, no timestamp-as-flag, an ordinal `position`
    for ordered collections, `NULLS NOT DISTINCT` on nullable unique constraints
    ([§7.1](#71-schema-and-data-modeling)).
-5. **Data-access shape?** A `{ context, query }` options object, total
-   non-throwing readers, idempotent deletes, transactional aggregate writes, no
-   business rules in the layer ([§7.2](#72-data-access-modules-repositories)).
+5. **Data-access shape?** One `{ context, query }` argument, total non-throwing
+   readers, idempotent deletes, transactional aggregate writes, no business rules in
+   the layer ([§7.2](#72-data-access-modules-repositories)).
 6. **Locking?** A `version` compare-and-swap incremented in SQL; no timestamp lock
    token ([§7.3](#73-optimistic-locking)).
-7. **Migrations generated?** The schema change was compiled to a migration with
-   `db:generate` and applied with `db:migrate`; the generated SQL and snapshot are
-   committed but not hand-edited; raw SQL only through a tracked
-   `db:generate --custom` migration ([§7.4](#74-migrations)).
-8. **Errors?** Expected failures that end the request are `AppError` codes, always
-   4xx, with status set by the function middleware ([§9](#9-errors-and-middleware)).
-   A `Result` appears only where the direct caller branches on the failure, and is
-   never returned from a server function or a data-access module, nor used to abort
-   a transaction ([§5.2](#52-return-values)).
+7. **Migrations generated?** The schema change was compiled to a migration through
+   the named script; the generated SQL and its metadata are committed but not
+   hand-edited; raw SQL only through a tracked custom migration
+   ([§7.4](#74-migrations)).
+8. **Errors?** Expected failures that end the request are app error codes, always
+   4xx, with the status set in one place ([§9](#9-errors-and-middleware)). A `Result`
+   appears only where the direct caller branches on the failure, and is never
+   returned from a transport edge or a data-access module, nor used to abort a
+   transaction ([§5.2](#52-return-values)).
 9. **Validation home?** A lenient pure validator shared with the form; cleaning and
    normalization owned by the service; owner from context, not payload
    ([§8](#8-domain--service-layer-and-validation)).
 10. **Module order, signatures & returns?** Doc comment, then exports, then helpers
-    stepping down; hoisted helpers written as `function` declarations; a single
-    options object for any multi-argument function you write, deferring to
-    framework-owned signatures; a named object for a multi-value return, never a
-    tuple ([§5](#5-module-organization)).
+    stepping down; the named-argument form for any multi-argument function you
+    write, deferring to framework-owned signatures; a named object for a multi-value
+    return, never a tuple ([§5](#5-module-organization)).
 11. **Tests at the right seam?** Behavior through the exported API against an
     isolated test database, not internals ([§11](#11-testing)).
 12. **Behavior covered end to end?** Every user-observable behavior the diff adds,
@@ -1082,5 +1224,11 @@ agent attention on the rest.
     Removed behavior has had its scenarios deleted, no scenario is skipped, only
     unbuilt behavior carries `@pending`, and the full `test:e2e` suite passes
     ([§11.1](#111-end-to-end-coverage)).
-13. **Smell pass** — walk [§13](#13-code-smell-baseline) and flag findings as
+13. **TanStack specifics?** No new barrel merging a server/client pair
+   ([§6](#6-server--client-boundary)); hoisted helpers written as `function`
+   declarations ([§5](#5-module-organization)); the error status set by the
+   function middleware ([§9](#9-errors-and-middleware)); migrations through
+   `db:generate` and `db:migrate`, custom SQL only via `db:generate --custom`
+   ([§7.4](#74-migrations)).
+14. **Smell pass** — walk [§13](#13-code-smell-baseline) and flag findings as
     judgement calls, not hard violations.

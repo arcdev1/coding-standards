@@ -7,6 +7,34 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 2.0.0 — 2026-10-22
+
+- Added §11.1 "End-to-end coverage". Every user-observable behavior (a page or flow,
+  a validation message, an error or empty state, a permission denial, a redirect, an
+  email or file the app sends) is specified in a Gherkin `.feature` file and
+  exercised through playwright-bdd. A change is complete only when its behavior is in
+  a feature file and the full `test:e2e` suite passes: new features add scenarios,
+  behavior changes edit them, user-facing bug fixes add a scenario that fails before
+  the fix, removals delete them, and behavior-preserving refactors leave them alone.
+  A tagged CI subset (`@smoke`) may gate the deploy, but the full suite runs before
+  merge. A skipped scenario (`@skip`, `@fixme`, an undefined step) is not coverage.
+  `@pending` is the one exception: it marks a scenario for behavior the app does not
+  have yet, is excluded at generation (`tags: 'not @pending'`), counts as coverage
+  for nothing, and comes off in the change that builds the behavior. No other tag may
+  exclude a scenario from the full run.
+  Steps are written in domain language at the level of user intent, with selectors
+  in step definitions. Each distinct user-visible outcome gets a scenario, and the
+  inputs behind one outcome stay in unit tests. Adds the `features/` layout and moves
+  the serial-run and row-marker rules from the §11 bullet list into §11.1.
+- §2's gate gains a fifth script, `test:e2e` (`bddgen && playwright test`): the first
+  four still run on every commit, and `test:e2e` must pass before a change is
+  complete. §12 makes the full `test:e2e` run a merge precondition. Added
+  review-checklist item 12 ("Behavior covered end to end?") and renumbered the smell
+  pass to 13.
+- MAJOR: a change that passed review before fails now if its behavior has no passing
+  scenario, and an app whose CI runs only a smoke subset must also run the full suite
+  before merge. Source: Bill, E2E-as-definition-of-done decision.
+
 ## 1.7.0 — 2026-10-10
 
 - Added §5.2 "Return values", the "return an object" half of RORO (§5.1 already

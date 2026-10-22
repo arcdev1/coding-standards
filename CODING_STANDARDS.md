@@ -186,15 +186,17 @@ import ordering; don't reintroduce hand-review of it. **Keep `no-use-before-defi
 off** (or set `{ functions: false }` if you enable it) so the stepdown module
 order in [§5](#5-module-organization) stays legal.
 
-**The gate.** Wire four package scripts so the names are stable, and require all
-four green before any change lands:
+**The gate.** Wire five package scripts so the names are stable. The first four
+must pass on every commit. `test:e2e` takes longer and must pass before a change is
+complete ([§11.1](#111-end-to-end-coverage)).
 
-| Script      | Runs                       |
-| ----------- | -------------------------- |
-| `check`     | Prettier in check mode     |
-| `lint`      | ESLint                     |
-| `typecheck` | `tsc --noEmit`             |
-| `test`      | the unit/integration suite |
+| Script      | Runs                                              |
+| ----------- | ------------------------------------------------- |
+| `check`     | Prettier in check mode                            |
+| `lint`      | ESLint                                            |
+| `typecheck` | `tsc --noEmit`                                    |
+| `test`      | the unit/integration suite                        |
+| `test:e2e`  | `bddgen && playwright test`, the end-to-end suite |
 
 ---
 
@@ -890,16 +892,82 @@ machine-readable code; global middleware maps the code to an HTTP status.
   existing seam — the service for an aggregate — never private internals or the
   order of declarations inside a file. A refactor that preserves behavior must not
   require a test change.
-- **E2E drives the real app through a browser.** Use Playwright with playwright-bdd
-  (Gherkin `.feature` files compiled to specs). Run serially (`workers: 1`) when
-  scenarios share global state, and tag every record a scenario creates with a
-  recognizable marker so a teardown step can sweep it, keeping a reused E2E
-  database clean.
 - **Isolate parallel work without hardcoding.** Derive the dev-server port and the
   test-database name deterministically from the worktree's identity (for example, a
   hash of its path), so many worktrees or checkouts run at once without collision.
   Never hardcode a port or pass `--port`, and never point a test at the dev
   database.
+
+### 11.1 End-to-end coverage
+
+**Every user-observable behavior is specified in a Gherkin `.feature` file and
+exercised end to end through playwright-bdd.** A behavior is user-observable when a
+user can see it or cause it through the running app: a page or flow, a validation
+message, an error or empty state, a permission denial, a redirect, an email or file
+the app sends. The feature file is the specification of that behavior. The
+scenario, run in a real browser against the real server and an isolated database,
+is the evidence that it works.
+
+**A change is complete only when its behavior is in a feature file and the scenario
+passes.** Unit tests, integration tests, and a manual check in the browser do not
+meet this bar on their own. Each kind of change updates the feature files in the
+same change set:
+
+- **A new feature** adds the scenarios that describe it.
+- **A change to existing behavior** edits the scenarios that describe it.
+- **A fix for a bug a user can hit** adds or corrects a scenario that fails before
+  the fix and passes after it.
+- **A removal** deletes the scenarios for the removed behavior.
+- **A refactor** that preserves behavior leaves the feature files as they are, and
+  the passing suite is its evidence.
+
+**The full suite passes before a change is complete.** A change can break a
+scenario in another feature, so `test:e2e` runs every scenario before merge. A CI
+stage may run a tagged subset (`@smoke`) to keep the deploy fast. The full run
+before merge still applies.
+
+**A skipped scenario covers nothing.** A scenario tagged `@skip` or `@fixme`, or one
+with an undefined step, does not count as coverage. A change that skips a scenario
+to get the suite green is incomplete. Keep playwright-bdd's default
+`missingSteps: 'fail-on-gen'` so an undefined step stops generation.
+
+**`@pending` marks a scenario written ahead of its code.** A scenario for behavior
+the app does not have yet may sit in a feature file tagged `@pending`. Exclude the
+tag at generation (`defineBddConfig({ tags: 'not @pending', … })`), so its
+undefined steps do not fail `bddgen`. A `@pending` scenario is a specification and
+counts as coverage for nothing. The change that builds the behavior removes the
+tag, and that change is complete only when the scenario runs and passes. A
+scenario for behavior the app already ships never carries `@pending`, and no other
+tag may exclude a scenario from the full run.
+
+**Write steps in the domain's language, at the level of user intent.** A step
+states what the user does and sees in the glossary's vocabulary:
+`When the Operator places an order for 3 widgets`, never `When I click "#submit"`.
+Selectors, URLs, and waits belong in the step definitions, so a UI redesign changes
+the step definitions and leaves the feature file as written.
+
+**Each distinct outcome a user can see gets a scenario, and the inputs behind one
+outcome stay in unit tests.** A scenario proves the behavior is wired through the
+browser, the server function, the service, and the database. One scenario shows
+that an invalid email reaches the user as a field error, and the validator's unit
+test covers each malformed shape that produces it. Use a `Scenario Outline` when the
+variations are themselves visible to the user, such as a different message per
+role.
+
+| Path                            | Holds                                                  |
+| ------------------------------- | ------------------------------------------------------ |
+| `features/<capability>.feature` | Gherkin scenarios, one file per user-facing capability |
+| `features/steps/`               | Step definitions and the shared BDD fixtures           |
+| `.features-gen/`                | `bddgen` output, gitignored                            |
+
+**Run serially when scenarios share state.** Set `workers: 1` when scenarios share
+global state, and tag every record a scenario creates with a recognizable marker so
+a teardown step can sweep it from the reused E2E database.
+
+Why: a feature file states what the app does in words a user and a reviewer can
+check, and a passing scenario shows the app doing it with every layer wired
+together. Making both part of done means the specification is updated in the same
+change as the code it describes.
 
 ---
 
@@ -921,8 +989,10 @@ machine-readable code; global middleware maps the code to an HTTP status.
 - **Never bypass hooks** (`--no-verify`), and never rewrite already-shared history:
   no amend, rebase, or force-push on the default branch, the production-aligned
   branch, or a branch someone else is building on.
-- **Every commit leaves the automated gate green** — `check`, `lint`, `typecheck`,
-  and the tests all pass ([§2](#2-formatting-lint-and-types-automated)).
+- **Every commit leaves the automated gate green.** `check`, `lint`, `typecheck`,
+  and `test` pass ([§2](#2-formatting-lint-and-types-automated)). A change is not
+  ready to merge until its behavior is in a feature file and the full `test:e2e`
+  suite passes ([§11.1](#111-end-to-end-coverage)).
 - **Record cross-cutting decisions as ADRs** in the repository, so the reasoning is
   durable and these standards and the code stay consistent as the app grows.
 
@@ -1007,5 +1077,10 @@ agent attention on the rest.
     tuple ([§5](#5-module-organization)).
 11. **Tests at the right seam?** Behavior through the exported API against an
     isolated test database, not internals ([§11](#11-testing)).
-12. **Smell pass** — walk [§13](#13-code-smell-baseline) and flag findings as
+12. **Behavior covered end to end?** Every user-observable behavior the diff adds,
+    changes, or fixes appears in a `.feature` scenario written in domain language.
+    Removed behavior has had its scenarios deleted, no scenario is skipped, only
+    unbuilt behavior carries `@pending`, and the full `test:e2e` suite passes
+    ([§11.1](#111-end-to-end-coverage)).
+13. **Smell pass** — walk [§13](#13-code-smell-baseline) and flag findings as
     judgement calls, not hard violations.

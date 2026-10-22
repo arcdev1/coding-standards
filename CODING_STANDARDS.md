@@ -931,6 +931,15 @@ with an undefined step, does not count as coverage. A change that skips a scenar
 to get the suite green is incomplete. Keep playwright-bdd's default
 `missingSteps: 'fail-on-gen'` so an undefined step stops generation.
 
+**`@pending` marks a scenario written ahead of its code.** A scenario for behavior
+the app does not have yet may sit in a feature file tagged `@pending`. Exclude the
+tag at generation (`defineBddConfig({ tags: 'not @pending', … })`), so its
+undefined steps do not fail `bddgen`. A `@pending` scenario is a specification and
+counts as coverage for nothing. The change that builds the behavior removes the
+tag, and that change is complete only when the scenario runs and passes. A
+scenario for behavior the app already ships never carries `@pending`, and no other
+tag may exclude a scenario from the full run.
+
 **Write steps in the domain's language, at the level of user intent.** A step
 states what the user does and sees in the glossary's vocabulary:
 `When the Operator places an order for 3 widgets`, never `When I click "#submit"`.
@@ -1070,7 +1079,8 @@ agent attention on the rest.
     isolated test database, not internals ([§11](#11-testing)).
 12. **Behavior covered end to end?** Every user-observable behavior the diff adds,
     changes, or fixes appears in a `.feature` scenario written in domain language.
-    Removed behavior has had its scenarios deleted, no scenario is skipped, and the
-    full `test:e2e` suite passes ([§11.1](#111-end-to-end-coverage)).
+    Removed behavior has had its scenarios deleted, no scenario is skipped, only
+    unbuilt behavior carries `@pending`, and the full `test:e2e` suite passes
+    ([§11.1](#111-end-to-end-coverage)).
 13. **Smell pass** — walk [§13](#13-code-smell-baseline) and flag findings as
     judgement calls, not hard violations.

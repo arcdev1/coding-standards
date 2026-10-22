@@ -18,6 +18,10 @@ wording, examples, or typo fixes with no change in what passes.
   the fix, removals delete them, and behavior-preserving refactors leave them alone.
   A tagged CI subset (`@smoke`) may gate the deploy, but the full suite runs before
   merge. A skipped scenario (`@skip`, `@fixme`, an undefined step) is not coverage.
+  `@pending` is the one exception: it marks a scenario for behavior the app does not
+  have yet, is excluded at generation (`tags: 'not @pending'`), counts as coverage
+  for nothing, and comes off in the change that builds the behavior. No other tag may
+  exclude a scenario from the full run.
   Steps are written in domain language at the level of user intent, with selectors
   in step definitions. Each distinct user-visible outcome gets a scenario, and the
   inputs behind one outcome stay in unit tests. Adds the `features/` layout and moves

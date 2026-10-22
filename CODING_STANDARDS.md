@@ -19,6 +19,24 @@ _Current-state document — edit it in place, and keep it the single source. Rec
 the reasoning behind a change where your team keeps decisions (an ADR log), not
 in this file's prose._
 
+## Contents
+
+- [0. First principle: idiomatic stack first](#0-first-principle-idiomatic-stack-first)
+- [1. Language and imports](#1-language-and-imports)
+- [2. Formatting, lint, and types (automated)](#2-formatting-lint-and-types-automated)
+- [3. Naming](#3-naming)
+- [4. Project structure](#4-project-structure)
+- [5. Module organization](#5-module-organization) · [5.1 Function signatures](#51-function-signatures) · [5.2 Return values](#52-return-values)
+- [6. Server / client boundary](#6-server--client-boundary)
+- [7. Data layer](#7-data-layer) · [7.1 Schema and data modeling](#71-schema-and-data-modeling) · [7.2 Data-access modules (repositories)](#72-data-access-modules-repositories) · [7.3 Optimistic locking](#73-optimistic-locking) · [7.4 Migrations](#74-migrations)
+- [8. Domain / service layer and validation](#8-domain--service-layer-and-validation)
+- [9. Errors and middleware](#9-errors-and-middleware)
+- [10. User experience and UI](#10-user-experience-and-ui) · [List reordering](#list-reordering)
+- [11. Testing](#11-testing) · [11.1 End-to-end coverage](#111-end-to-end-coverage)
+- [12. Version control and workflow](#12-version-control-and-workflow)
+- [13. Code-smell baseline](#13-code-smell-baseline)
+- [14. Review checklist](#14-review-checklist)
+
 ## How this standard relates to a project's own docs
 
 This file is the **portable rule set** — copy it into a project and it stands
@@ -26,7 +44,9 @@ alone. On top of it a project keeps two current-state companions:
 **`docs/conventions/`**, the same rules as worked examples against that app's own
 domain (each linking its decision record), and **`docs/adr/`**, short records of
 what was decided and why. The standard states the rule, a convention shows it in the
-codebase, the ADR says why. Conventions and code comments are current-state: edit
+codebase, the ADR says why. A rule only this project needs goes in its **local
+profile**, which the sync assembles into this file; a rule every project needs goes
+upstream as a change to the canonical standard. Never edit the generated copy. Conventions and code comments are current-state: edit
 them in place and let git hold the history. Do not write "used to" or "previously"
 into a comment; what changed lives in git and, where it was a decision, in an ADR.
 
@@ -59,7 +79,18 @@ stack rules under each section are specific to it.
 ## How to use this document
 
 - **Writing code:** read [§0](#0-first-principle-idiomatic-stack-first) and the
-  section for the layer you're touching before you start.
+  sections for the change at hand before you start:
+
+  | When you change…                                        | Read                    |
+  | ------------------------------------------------------- | ----------------------- |
+  | a page, component, or user flow                         | §10, §11.1              |
+  | a transport edge (server function, handler, command)    | §5.1, §6, §8, §9        |
+  | a service, rule, or validator                           | §5, §8, §11             |
+  | the schema or a migration                               | §7.1, §7.4              |
+  | a data-access module                                    | §7.2, §7.3              |
+  | a test                                                  | §11, §11.1              |
+  | anything                                                | §0, §2, §12, §14        |
+
 - **Reviewing code:** run the diff against the [review checklist](#14-review-checklist)
   and the [code-smell baseline](#13-code-smell-baseline), on top of the per-layer
   rules.
@@ -150,8 +181,6 @@ component and token.
   name is stable and greppable, and the module states which names are its public
   API.
 
-- **TypeScript with `strict` on, always.** The full strict configuration is in
-  [§2](#2-formatting-lint-and-types-automated).
 - **`import type` for type-only imports.** With `verbatimModuleSyntax` on, a value
   import used only as a type is a build error. Split a mixed import into a value
   `import { … }` and a separate `import type { … }`.
@@ -366,7 +395,6 @@ function cleanOrder(input: OrderInput): CleanOrder {
 }
 ```
 
-- **Every module opens with a `/** … */` doc comment.**
 - **Hoist with `function` declarations.** A helper that sits above its first caller
   must be a `function` declaration (hoisted and callable before its own line), not
   a `const` arrow (which lives in a temporal dead zone and throws if called
@@ -375,7 +403,6 @@ function cleanOrder(input: OrderInput): CleanOrder {
   separator only from inside a function body (deferred to call time), or place it
   above any top-level code that reads it. Types are erased and carry no ordering
   constraint.
-- **Scope.** Component files keep their component-first idiom.
 
 ### 5.1 Function signatures
 
@@ -493,8 +520,6 @@ Why: a `Result` makes a failure part of the contract where the caller acts on it
 and throwing everywhere else keeps the app on the error path that its framework and
 the error mapping already handle.
 
-React hooks and other framework-owned shapes keep their own idiom.
-
 ```ts
 // ✗ a tuple: the caller has to remember which slot is which
 return [order, true]
@@ -503,9 +528,8 @@ return [order, true]
 return { order, operation: 'insert' }
 ```
 
-TypeScript has no checked exceptions, so the codes a function can throw are
-invisible in its signature. Zod's `safeParse` is the model for a `Result`. Define
-the type once, client-safe, in `src/lib/result.ts`:
+Zod's `safeParse` is the model for a `Result`. Define the type once, client-safe,
+in `src/lib/result.ts`:
 
 ```ts
 /** The outcome of a function whose failures are branches its caller handles. Client-safe. */
@@ -549,14 +573,10 @@ for (const row of rows) {
 return { applied, rejected }
 ```
 
-- **A server function never returns a `Result`.** TanStack Query caches
-  `{ ok: false }` as a successful response, the router's `errorComponent` never sees
-  it, and the [§9](#9-errors-and-middleware) middleware maps no status.
-- **Drizzle rolls back only when the transaction callback throws**, so work inside
-  `inTransaction` that returns `{ ok: false }` commits whatever it already wrote.
-- **Data-access modules never return a `Result`**: the service classifies what a
-  reader returned, as `matchOrder` does above.
-- **Never wrap arbitrary code in `try/catch`** to turn every error into a `Result`.
+Why the edge rules bite here: TanStack Query caches a server function's
+`{ ok: false }` as a successful response, the router's `errorComponent` never sees
+it, and the [§9](#9-errors-and-middleware) middleware maps no status; Drizzle rolls
+back only when the `inTransaction` callback throws.
 
 ---
 
@@ -713,10 +733,6 @@ export function insertOrder(opts: {
   /* … */
 }
 ```
-
-A data-access module imports the DB client (driver and connection secrets), so it
-sits behind a server-function handler and is never imported by a client component.
-Writers raise `AppError` codes.
 
 ### 7.3 Optimistic locking
 

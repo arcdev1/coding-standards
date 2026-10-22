@@ -71,8 +71,6 @@ component and token.
 <!-- /slot -->
 
 <!-- slot: 1 -->
-- **TypeScript with `strict` on, always.** The full strict configuration is in
-  [§2](#2-formatting-lint-and-types-automated).
 - **`import type` for type-only imports.** With `verbatimModuleSyntax` on, a value
   import used only as a type is a build error. Split a mixed import into a value
   `import { … }` and a separate `import type { … }`.
@@ -208,7 +206,6 @@ function cleanOrder(input: OrderInput): CleanOrder {
 }
 ```
 
-- **Every module opens with a `/** … */` doc comment.**
 - **Hoist with `function` declarations.** A helper that sits above its first caller
   must be a `function` declaration (hoisted and callable before its own line), not
   a `const` arrow (which lives in a temporal dead zone and throws if called
@@ -217,7 +214,6 @@ function cleanOrder(input: OrderInput): CleanOrder {
   separator only from inside a function body (deferred to call time), or place it
   above any top-level code that reads it. Types are erased and carry no ordering
   constraint.
-- **Scope.** Component files keep their component-first idiom.
 <!-- /slot -->
 
 <!-- slot: 5.1 -->
@@ -258,8 +254,6 @@ The framework-owned signatures on this stack:
 <!-- /slot -->
 
 <!-- slot: 5.2 -->
-React hooks and other framework-owned shapes keep their own idiom.
-
 ```ts
 // ✗ a tuple: the caller has to remember which slot is which
 return [order, true]
@@ -268,9 +262,8 @@ return [order, true]
 return { order, operation: 'insert' }
 ```
 
-TypeScript has no checked exceptions, so the codes a function can throw are
-invisible in its signature. Zod's `safeParse` is the model for a `Result`. Define
-the type once, client-safe, in `src/lib/result.ts`:
+Zod's `safeParse` is the model for a `Result`. Define the type once, client-safe,
+in `src/lib/result.ts`:
 
 ```ts
 /** The outcome of a function whose failures are branches its caller handles. Client-safe. */
@@ -314,14 +307,10 @@ for (const row of rows) {
 return { applied, rejected }
 ```
 
-- **A server function never returns a `Result`.** TanStack Query caches
-  `{ ok: false }` as a successful response, the router's `errorComponent` never sees
-  it, and the [§9](#9-errors-and-middleware) middleware maps no status.
-- **Drizzle rolls back only when the transaction callback throws**, so work inside
-  `inTransaction` that returns `{ ok: false }` commits whatever it already wrote.
-- **Data-access modules never return a `Result`**: the service classifies what a
-  reader returned, as `matchOrder` does above.
-- **Never wrap arbitrary code in `try/catch`** to turn every error into a `Result`.
+Why the edge rules bite here: TanStack Query caches a server function's
+`{ ok: false }` as a successful response, the router's `errorComponent` never sees
+it, and the [§9](#9-errors-and-middleware) middleware maps no status; Drizzle rolls
+back only when the `inTransaction` callback throws.
 <!-- /slot -->
 
 <!-- slot: 6 -->
@@ -393,9 +382,6 @@ export function insertOrder(opts: {
 }
 ```
 
-A data-access module imports the DB client (driver and connection secrets), so it
-sits behind a server-function handler and is never imported by a client component.
-Writers raise `AppError` codes.
 <!-- /slot -->
 
 <!-- slot: 7.3 -->

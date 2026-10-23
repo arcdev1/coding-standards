@@ -33,19 +33,29 @@ const LINE_BUDGET = 1000
 // Every profile must assemble on its own; assemble() throws on an unknown slot.
 for (const file of readdirSync(profileDir).filter((f) => f.endsWith('.md'))) {
   const name = file.replace(/\.md$/, '')
-  const lines = assemble({ core, profiles: [loadProfile(name)] }).split('\n').length
-  const over = lines > LINE_BUDGET ? `  (warning: over the ${LINE_BUDGET}-line budget)` : ''
+  const lines = assemble({ core, profiles: [loadProfile(name)] }).split(
+    '\n',
+  ).length
+  const over =
+    lines > LINE_BUDGET
+      ? `  (warning: over the ${LINE_BUDGET}-line budget)`
+      : ''
   console.log(`  ${name.padEnd(16)} ${String(lines).padStart(5)} lines${over}`)
 }
 
-const built = NOTE + assemble({ core, profiles: [loadProfile('tanstack-start')] })
+const built =
+  NOTE + assemble({ core, profiles: [loadProfile('tanstack-start')] })
 
 if (process.argv.includes('--check')) {
   if (readFileSync(OUT, 'utf8') !== built) {
-    console.error('CODING_STANDARDS.md is stale: run `node scripts/build.mjs` and commit it.')
+    console.error(
+      'CODING_STANDARDS.md is stale: run `node scripts/build.mjs` and commit it.',
+    )
     process.exit(1)
   }
-  console.log('build:check OK — CODING_STANDARDS.md matches standard/, and every profile assembles.')
+  console.log(
+    'build:check OK — CODING_STANDARDS.md matches standard/, and every profile assembles.',
+  )
 } else {
   writeFileSync(OUT, built)
   console.log('build — wrote CODING_STANDARDS.md (core + tanstack-start).')

@@ -7,6 +7,18 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 2.1.2 — 2026-10-23
+
+- Fixed the sync runner doing nothing when run through a symlinked path. The 2.1.0
+  runner decided whether it was the main script by comparing `process.argv[1]` with
+  `import.meta.url`, but node resolves symlinks for the main module, so a run from
+  macOS's `/var/folders/…` temp directory (where the orchestrator builds sync
+  commits) exited 0 without writing anything. The 2026-10-23 sync PRs carried only the
+  new runner as a result. The check now compares real paths.
+- Formatted `scripts/standards-sync.mjs` and `scripts/build.mjs` with the house Prettier
+  settings, since some consumers format-check the vendored runner.
+- PATCH: no rule changes.
+
 ## 2.1.1 — 2026-10-22
 
 - Every assembled copy now opens with a generated **Contents** list linking each

@@ -40,9 +40,9 @@
 
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, realpathSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 
 const CANONICAL_REPO = 'arcdev1/coding-standards'
 const DEFAULT_BRANCH = 'main'
@@ -62,13 +62,18 @@ const HEADER_SIGNATURE = '<!--\n  GENERATED — DO NOT EDIT.'
  * fills a slot the core does not have, so a typo can't drop rules silently.
  */
 export function assemble({ core, profiles }) {
-  const markers = new Set([...core.matchAll(/^<!-- profile: (\S+) -->$/gm)].map((m) => m[1]))
+  const markers = new Set(
+    [...core.matchAll(/^<!-- profile: (\S+) -->$/gm)].map((m) => m[1]),
+  )
   for (const profile of profiles) {
     for (const id of profile.slots.keys()) {
-      if (!markers.has(id)) throw new Error(`profile ${profile.name} fills unknown slot "${id}"`)
+      if (!markers.has(id))
+        throw new Error(`profile ${profile.name} fills unknown slot "${id}"`)
     }
   }
-  const body = core.replace(/^<!-- profile: (\S+) -->$/gm, (_, id) => fillSlot({ id, profiles }))
+  const body = core.replace(/^<!-- profile: (\S+) -->$/gm, (_, id) =>
+    fillSlot({ id, profiles }),
+  )
   const assembled = renumberChecklist(lf(body).replace(/\n{3,}/g, '\n\n'))
   return assembled.replace(/^<!-- contents -->$/m, () => contentsFor(assembled))
 }
@@ -84,7 +89,8 @@ function contentsFor(text) {
     const [, level, title] = m
     const link = `[${title}](#${anchorFor(title)})`
     if (level === '##' && /^\d+\. /.test(title)) lines.push(`- ${link}`)
-    else if (level === '###' && lines.length > 0) lines[lines.length - 1] += ` · ${link}`
+    else if (level === '###' && lines.length > 0)
+      lines[lines.length - 1] += ` · ${link}`
   }
   return lines.join('\n')
 }
@@ -109,11 +115,19 @@ export function parseProfile({ text, scope }) {
     }
   }
   const slots = new Map()
-  for (const m of source.matchAll(/^<!-- slot: (\S+) -->\n([\s\S]*?)\n<!-- \/slot -->$/gm)) {
-    if (slots.has(m[1])) throw new Error(`profile ${meta.name ?? '?'} fills slot "${m[1]}" twice`)
+  for (const m of source.matchAll(
+    /^<!-- slot: (\S+) -->\n([\s\S]*?)\n<!-- \/slot -->$/gm,
+  )) {
+    if (slots.has(m[1]))
+      throw new Error(`profile ${meta.name ?? '?'} fills slot "${m[1]}" twice`)
     slots.set(m[1], m[2].trim())
   }
-  return { name: meta.name ?? 'local', title: meta.title ?? 'Local rules', scope, slots }
+  return {
+    name: meta.name ?? 'local',
+    title: meta.title ?? 'Local rules',
+    scope,
+    slots,
+  }
 }
 
 function fillSlot({ id, profiles }) {
@@ -126,7 +140,9 @@ function fillSlot({ id, profiles }) {
 }
 
 function labelFor(profile) {
-  return profile.scope ? `**${profile.title}** (\`${profile.scope}\`):` : `**${profile.title}:**`
+  return profile.scope
+    ? `**${profile.title}** (\`${profile.scope}\`):`
+    : `**${profile.title}:**`
 }
 
 // §14 is one ordered list that profiles extend, so its numbers are reassigned.
@@ -141,7 +157,11 @@ function renumberChecklist(text) {
 // ---- args, hashing, header ----
 
 function parseArgs(argv) {
-  const args = { check: false, dest: process.env.STANDARDS_DEST || process.cwd(), source: null }
+  const args = {
+    check: false,
+    dest: process.env.STANDARDS_DEST || process.cwd(),
+    source: null,
+  }
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--check') args.check = true
     else if (argv[i] === '--dest') args.dest = argv[++i]
@@ -190,9 +210,9 @@ function readConfig(dest) {
   const profiles = (raw.profiles ?? DEFAULT_PROFILES).map((entry) =>
     typeof entry === 'string' ? { name: entry } : entry,
   )
-  const local = [].concat(raw.local ?? []).map((entry) =>
-    typeof entry === 'string' ? { path: entry } : entry,
-  )
+  const local = []
+    .concat(raw.local ?? [])
+    .map((entry) => (typeof entry === 'string' ? { path: entry } : entry))
   return { profiles, local }
 }
 
@@ -216,8 +236,16 @@ function gh(pathArgs, { raw = false } = {}) {
 
 function viaGh() {
   return {
-    head: () => gh([`repos/${CANONICAL_REPO}/commits/${DEFAULT_BRANCH}`, '-q', '.sha']).trim(),
-    file: (path, ref) => gh([`repos/${CANONICAL_REPO}/contents/${path}?ref=${ref}`], { raw: true }),
+    head: () =>
+      gh([
+        `repos/${CANONICAL_REPO}/commits/${DEFAULT_BRANCH}`,
+        '-q',
+        '.sha',
+      ]).trim(),
+    file: (path, ref) =>
+      gh([`repos/${CANONICAL_REPO}/contents/${path}?ref=${ref}`], {
+        raw: true,
+      }),
     lastCommit: (path, ref) => {
       const out = gh([
         `repos/${CANONICAL_REPO}/commits?path=${path}&sha=${ref}&per_page=1`,
@@ -231,12 +259,19 @@ function viaGh() {
 }
 
 function viaCheckout(dir) {
-  const git = (args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim()
+  const git = (args) =>
+    execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim()
   return {
     head: () => git(['rev-parse', 'HEAD']),
     file: (path) => readFileSync(join(dir, path), 'utf8'),
     lastCommit: (path) => {
-      const [sha, date] = git(['log', '-1', '--format=%H%x09%cI', '--', path]).split('\t')
+      const [sha, date] = git([
+        'log',
+        '-1',
+        '--format=%H%x09%cI',
+        '--',
+        path,
+      ]).split('\t')
       return { sha, date }
     },
   }
@@ -256,10 +291,17 @@ async function httpGet(url, { json = false } = {}) {
 function viaHttp() {
   const api = `https://api.github.com/repos/${CANONICAL_REPO}`
   return {
-    head: async () => (await httpGet(`${api}/commits/${DEFAULT_BRANCH}`, { json: true })).sha,
-    file: (path, ref) => httpGet(`https://raw.githubusercontent.com/${CANONICAL_REPO}/${ref}/${path}`),
+    head: async () =>
+      (await httpGet(`${api}/commits/${DEFAULT_BRANCH}`, { json: true })).sha,
+    file: (path, ref) =>
+      httpGet(
+        `https://raw.githubusercontent.com/${CANONICAL_REPO}/${ref}/${path}`,
+      ),
     lastCommit: async (path, ref) => {
-      const commits = await httpGet(`${api}/commits?path=${path}&sha=${ref}&per_page=1`, { json: true })
+      const commits = await httpGet(
+        `${api}/commits?path=${path}&sha=${ref}&per_page=1`,
+        { json: true },
+      )
       const c = Array.isArray(commits) && commits[0]
       return { sha: c && c.sha, date: c && c.commit.committer.date }
     },
@@ -271,7 +313,10 @@ function viaHttp() {
  * newest commit that touched any of them: the SHA this consumer pins.
  */
 async function fetchCanonical({ profiles, source }) {
-  const paths = [CORE_PATH, ...profiles.map((p) => `${PROFILE_DIR}/${p.name}.md`)]
+  const paths = [
+    CORE_PATH,
+    ...profiles.map((p) => `${PROFILE_DIR}/${p.name}.md`),
+  ]
   const attempt = async (source) => {
     const head = await source.head()
     if (!head) throw new Error('empty main HEAD SHA')
@@ -280,10 +325,20 @@ async function fetchCanonical({ profiles, source }) {
       source.file(VERSION_PATH, head),
       ...paths.slice(1).map((p) => source.file(p, head)),
     ])
-    const touched = await Promise.all(paths.map((p) => source.lastCommit(p, head)))
-    const newest = touched.reduce((a, b) => (new Date(b.date) > new Date(a.date) ? b : a))
+    const touched = await Promise.all(
+      paths.map((p) => source.lastCommit(p, head)),
+    )
+    const newest = touched.reduce((a, b) =>
+      new Date(b.date) > new Date(a.date) ? b : a,
+    )
     if (!newest.sha) throw new Error('no commit SHA for the standard')
-    return { core, version: version.trim(), profileTexts, sha: newest.sha, shortSha: newest.sha.slice(0, 7) }
+    return {
+      core,
+      version: version.trim(),
+      profileTexts,
+      sha: newest.sha,
+      shortSha: newest.sha.slice(0, 7),
+    }
   }
   if (source) return attempt(viaCheckout(source))
   try {
@@ -292,7 +347,10 @@ async function fetchCanonical({ profiles, source }) {
     try {
       return await attempt(viaHttp())
     } catch (httpErr) {
-      const ghMsg = (ghErr.stderr || ghErr.message || '').toString().trim().split('\n')[0]
+      const ghMsg = (ghErr.stderr || ghErr.message || '')
+        .toString()
+        .trim()
+        .split('\n')[0]
       throw new Error(
         `Could not fetch the canonical standard from ${CANONICAL_REPO}.\n` +
           `  via gh:    ${ghMsg}\n` +
@@ -346,20 +404,31 @@ function runCheck(dest) {
       process.exit(1)
     }
   }
-  console.log(`standards:check OK — vendored ${STANDARD_PATH} matches v${meta.version} (${meta.sha.slice(0, 7)}).`)
+  console.log(
+    `standards:check OK — vendored ${STANDARD_PATH} matches v${meta.version} (${meta.sha.slice(0, 7)}).`,
+  )
 }
 
 async function runSync({ dest, source }) {
   const config = readConfig(dest)
-  const { core, version, profileTexts, sha, shortSha } = await fetchCanonical({ ...config, source })
+  const { core, version, profileTexts, sha, shortSha } = await fetchCanonical({
+    ...config,
+    source,
+  })
   const locals = readLocalProfiles({ dest, local: config.local })
   const profiles = [
-    ...config.profiles.map((p, i) => parseProfile({ text: profileTexts[i], scope: p.scope })),
-    ...locals.map(({ entry, text }) => parseProfile({ text, scope: entry.scope })),
+    ...config.profiles.map((p, i) =>
+      parseProfile({ text: profileTexts[i], scope: p.scope }),
+    ),
+    ...locals.map(({ entry, text }) =>
+      parseProfile({ text, scope: entry.scope }),
+    ),
   ]
   const body = assemble({ core, profiles })
   const expectedBodyHash = `sha256:${sha256(body)}`
-  const localHashes = Object.fromEntries(locals.map(({ entry, hash }) => [entry.path, hash]))
+  const localHashes = Object.fromEntries(
+    locals.map(({ entry, hash }) => [entry.path, hash]),
+  )
   const mdPath = join(dest, STANDARD_PATH)
   const local = readLocalMeta(dest)
   const currentBodyHash = existsSync(mdPath)
@@ -370,7 +439,9 @@ async function runSync({ dest, source }) {
   // matches). A hand-edit or a changed local profile leaves the SHA equal but the
   // body hash different, so this still repairs it — sync is self-healing.
   if (local && local.sha === sha && currentBodyHash === expectedBodyHash) {
-    console.log(`standards:sync — already up to date (v${version}, ${shortSha}). No changes.`)
+    console.log(
+      `standards:sync — already up to date (v${version}, ${shortSha}). No changes.`,
+    )
     return
   }
 
@@ -385,17 +456,25 @@ async function runSync({ dest, source }) {
     source: CANONICAL_REPO,
     syncedAt: new Date().toISOString(),
   }
-  writeFileSync(mdPath, renderVendored({ body, version, shortSha, profileNames }))
-  writeFileSync(join(dest, '.standards-version'), JSON.stringify(meta, null, 2) + '\n')
+  writeFileSync(
+    mdPath,
+    renderVendored({ body, version, shortSha, profileNames }),
+  )
+  writeFileSync(
+    join(dest, '.standards-version'),
+    JSON.stringify(meta, null, 2) + '\n',
+  )
 
   let action
   if (!local) action = `wrote v${version} (${shortSha})`
   else if (local.sha !== sha) action = `updated ${local.shortSha} → ${shortSha}`
   else action = `rebuilt (v${version}, ${shortSha})`
-  console.log(`standards:sync — ${action} with ${profileNames.join(' + ')} in ${dest}.`)
+  console.log(
+    `standards:sync — ${action} with ${profileNames.join(' + ')} in ${dest}.`,
+  )
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+if (isMain()) {
   try {
     const { check, dest, source } = parseArgs(process.argv.slice(2))
     if (check) runCheck(dest)
@@ -403,5 +482,17 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   } catch (err) {
     console.error(err.message || err)
     process.exit(1)
+  }
+}
+
+// True when this file is the script node was asked to run, not a module that
+// build.mjs imported. Compare real paths: node resolves symlinks for the main
+// module, so on macOS a run from /var/folders/… loads /private/var/folders/….
+function isMain() {
+  if (!process.argv[1]) return false
+  try {
+    return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
+  } catch {
+    return false
   }
 }

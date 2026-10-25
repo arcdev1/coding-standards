@@ -536,3 +536,14 @@ playwright-bdd compiles the feature files into Playwright specs with `bddgen`.
 <!-- slot: 12 -->
 - **The package manager is pnpm** (`pnpx`, not `npx`); don't mix in npm or yarn.
 <!-- /slot -->
+
+<!-- slot: 12.1 -->
+- **CI's database is a PostgreSQL service container** at production's major version,
+  named inside the test-database family so the guard in [§11](#11-testing) accepts it.
+  CI migrates it with `db:migrate` before `test` and `test:e2e`, and each `test:e2e`
+  shard gets a container of its own.
+- **Versions live in the repository.** Node in `.nvmrc` and pnpm in `package.json`'s
+  `packageManager`; CI reads both files and repeats neither version.
+- **`test:e2e` shards share one production build.** One CI job builds the app and
+  hands the output to the shards, and each shard starts its own server from it.
+<!-- /slot -->

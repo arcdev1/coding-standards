@@ -7,6 +7,36 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 2.2.0 — 2026-10-25
+
+- Added §12.1, "Continuous integration and deploys". Four lanes, each with what it runs,
+  its wall-time budget, and what a failure blocks: a pull request into the trunk (10
+  minutes), the release pull request (15 minutes), a push to a deploying branch (10
+  minutes), and the nightly run on the trunk. Rules that keep them fast: one required
+  check that aggregates every job, change detection inside the workflow instead of a
+  trigger path filter, report-only work such as coverage off pull requests, parallel
+  shards to meet the budget (one job per pipeline on a single-runner CI service), pinned
+  runner images, actions and tool versions, and at most one retry in CI.
+- Added the secrets rules to §12.1. The CI that runs pull-request checks holds no
+  secret, gets a read-only token, and scans every pull request's commits. A deploy
+  secret sits in a store that carries a branch check naming the one ref allowed to read
+  it, authorized for its own pipeline, and enters a run when the pipeline compiles.
+  Credentials are short-lived, the boundary is proven after any change, and an exposed
+  secret is rotated.
+- Every deploy ends in a smoke check, and the deploy path runs nightly as a dry run.
+- §11.1: CI runs the full `test:e2e` suite on every pull request that changes
+  application code, and that run is the merge evidence; the author runs the scenarios a
+  change touches. §2, §12 and the §14 checklist point to §12.1, and the read-by-change
+  table gains a row for CI, deploy pipelines and secrets.
+- `tanstack-start` and `capacitor-pwa` fill the new 12.1 slot: CI's PostgreSQL service
+  container and version files; the keyless e2e build, a build flag's own suite, and
+  unsigned bundle checks.
+- This repo's own check workflow follows §12.1: actions pinned to commit SHAs, a
+  read-only token, a pinned runner image, and Node from `.nvmrc`.
+- MINOR: rules added. Each assembled copy grows by about 90 lines, which takes
+  `kotlin-spring`, `python-fastapi` and `rust-cli` past the 1,000-line budget warning
+  that `capacitor-pwa` and `tanstack-start` already carried.
+
 ## 2.1.2 — 2026-10-23
 
 - Fixed the sync runner doing nothing when run through a symlinked path. The 2.1.0

@@ -306,6 +306,20 @@ Paths: `e2e/features/<capability>.feature`, `e2e/steps/` (with the `/api` guard)
   stay gitignored.
 <!-- /slot -->
 
+<!-- slot: 12.1 -->
+- **The bundle `test:e2e` serves is a build of its own.** A release build bakes in
+  production-only `VITE_*` values, such as a beta gate flag and analytics or bot-check
+  keys. The e2e build sets each one to an empty string, so the scenarios run the ungated
+  app and report to no production service. An empty process value still overrides the
+  env file, which an unset one does not.
+- **A build-time flag gets its own suite.** Behavior a build flag switches on, such as a
+  gated beta, runs in a second Playwright config that builds and serves its own bundle
+  with the flag set.
+- **Pull-request checks build every shipped bundle without a signing key.** The website,
+  the Capacitor web layer, and the over-the-air package's build guard run in a check mode;
+  only the deploy pipeline signs and publishes.
+<!-- /slot -->
+
 <!-- slot: 14 -->
 1. **Offline-first specifics?** The client works offline with no account; `src/domain/`
    imports nothing outside itself; no network module sits below `lib` or on the core path;

@@ -64,6 +64,7 @@ stack rules under each section are specific to it.
   | the schema or a migration                               | §7.1, §7.4              |
   | a data-access module                                    | §7.2, §7.3              |
   | a test                                                  | §11, §11.1              |
+  | CI, a deploy pipeline, or a secret                      | §12, §12.1              |
   | anything                                                | §0, §2, §12, §14        |
 
 - **Reviewing code:** run the diff against the [review checklist](#14-review-checklist)
@@ -116,8 +117,9 @@ These are machine-enforced. **Do not flag them in review** — run the command.
 
 **The gate.** Every project wires the same five steps under the same names, so
 people, agents, and CI call them the same way on every stack. The first four must
-pass on every commit. `test:e2e` takes longer and must pass before a change is
-complete ([§11.1](#111-end-to-end-coverage)).
+pass on every commit. `test:e2e` takes longer and must pass before a change merges
+([§11.1](#111-end-to-end-coverage)). CI runs all five on each pull request
+([§12.1](#121-continuous-integration-and-deploys)).
 
 | Step        | Runs                                  |
 | ----------- | ------------------------------------- |
@@ -621,10 +623,12 @@ their own. Each kind of change updates the feature files in the same change set:
 - **A refactor** that preserves behavior leaves the feature files as they are, and
   the passing suite is its evidence.
 
-**The full suite passes before a change is complete.** A change can break a
-scenario in another feature, so `test:e2e` runs every scenario before merge. A CI
-stage may run a tagged subset (`@smoke`) to keep the deploy fast. The full run
-before merge still applies.
+**The full suite passes before a change merges, and CI runs it.** A change can break
+a scenario in another feature, so `test:e2e` runs every scenario on every pull request
+that changes application code ([§12.1](#121-continuous-integration-and-deploys)). That
+run is the evidence the change works: the author runs the scenarios the change touches
+while working and leaves the full run to CI. A deploy may run a tagged subset
+(`@smoke`) against the deployed app; the full run before merge still applies.
 
 **A skipped scenario covers nothing.** A scenario tagged `@skip` or `@fixme`, or one
 with an undefined step, does not count as coverage. A change that skips a scenario
@@ -687,11 +691,92 @@ change as the code it describes.
 - **Every commit leaves the automated gate green.** `check`, `lint`, `typecheck`,
   and `test` pass ([§2](#2-formatting-lint-and-types-automated)). A change is not
   ready to merge until its behavior is in a feature file and the full `test:e2e`
-  suite passes ([§11.1](#111-end-to-end-coverage)).
+  suite passes on its pull request ([§11.1](#111-end-to-end-coverage),
+  [§12.1](#121-continuous-integration-and-deploys)).
 - **Record cross-cutting decisions as ADRs** in the repository, so the reasoning is
   durable and these standards and the code stay consistent as the app grows.
 
 <!-- profile: 12 -->
+
+### 12.1 Continuous integration and deploys
+
+CI checks a change before it merges; the deploy pipeline ships the branch that
+deploys. Keep the two apart: a pull-request check never deploys and never reads a
+secret, and a deploy runs only from the branch that deploys it.
+
+**Each trigger runs a fixed lane.**
+
+| Trigger                                   | Runs                                                                                                                                                         | Wall time | A failure blocks            |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- | --------------------------- |
+| a pull request into the trunk             | a secret scan of its commits, the four per-commit gate steps (`test` on a throwaway database), the production builds, and `test:e2e` when application code changed | 10 min    | the merge                   |
+| the release pull request                  | the same with `test:e2e` always, plus a summary of what changed in the CI, deploy, and test configuration since the last release                           | 15 min    | the release                 |
+| a push to a deploying branch              | build, migrate, deploy, then a smoke check of the deployed app                                                                                               | 10 min    | the rest of that deploy     |
+| a nightly schedule on the trunk           | report-only measurements such as coverage, slow suites, and a dry run of the deploy path that publishes nothing                                              | no limit  | the next release, while red |
+
+- **One required check.** The pull-request workflow ends in one job that passes only
+  when every other job passed or was skipped, and branch protection requires that job
+  alone. Adding, splitting, or sharding jobs then leaves the protection rules as they
+  are.
+- **Decide what runs inside the workflow, never with a trigger's path filter.** A
+  required check whose workflow a path filter never starts waits forever. A first job
+  compares the change with its base, and later jobs skip by condition, which counts as
+  passing. A change to documentation alone (Markdown files and the docs folder) skips
+  `test:e2e`; any other change runs it.
+- **Report-only work never runs on a pull request.** A coverage report, or any other
+  measurement that cannot fail the check, runs nightly.
+- **Meet the time budget with parallel jobs, never by dropping a check.** Shard
+  `test:e2e` across runners when one runner overruns, build what the shards serve once
+  and share it, and cancel a pull request's run in progress when a new commit arrives.
+  On a CI service with a single runner, make each pipeline one job, because every extra
+  job waits in the queue again.
+- **Pin what CI runs.** Pin a runner image to a version, and every action or task to
+  its full commit SHA, the CI service's own included. Read tool versions from files in
+  the repository (the package manager field, a version file) that CI and a developer
+  machine both use.
+- **CI may retry a failed scenario once and report it as flaky.** A local run fails on
+  the first failure, and a retry never skips a scenario
+  ([§11.1](#111-end-to-end-coverage)).
+
+**CI holds no secrets.** A pull-request check runs the code of whatever branch opened
+it, so any secret that check can read is readable from every branch.
+
+- **Store no secret in the CI that runs pull-request checks, and pass it none.** Tests
+  run on fake credentials written into the configuration and a throwaway database (a
+  service container). A check that needs a real credential belongs in the deploy
+  pipeline.
+- **Give the CI token read access only.** A job that needs more asks for it in its own
+  configuration.
+- **Scan every pull request's commits for secrets.** A finding fails the check, and a
+  known false positive goes in the scanner's ignore file with a comment saying why.
+
+**A deploy secret opens only for the branch that deploys.**
+
+- **Keep each deploy secret in a store that can carry a branch check:** a variable
+  group, a secure file, a service connection, or an environment. A plain pipeline
+  variable cannot carry one, so it never holds a secret.
+- **Give each store a branch check naming the one ref allowed to read it**, the
+  production-aligned branch for a production secret, and authorize the store for its
+  own pipeline only. The check lives on the store, so a branch that edits the pipeline
+  file still cannot read it.
+- **Add a step that reads a protected store only to runs of the allowed branch, when
+  the pipeline compiles.** A runtime condition leaves the reference in place, and the
+  check then fails every other run.
+- **Prefer short-lived credentials:** workload identity federation for a cloud deploy
+  and an app installation token for repository access. Neither CI nor the deploy
+  pipeline holds a personal access token.
+- **Map each secret into the one step that uses it.**
+- **Prove the boundary after any change to how secrets are wired.** A throwaway branch
+  that references a protected store must be refused at its check.
+- **Rotate a secret that anything outside its boundary could have read,** even with no
+  sign that it did.
+
+**Every deploy ends in a smoke check, and the deploy path runs nightly.** After the
+deploy, request the app and one endpoint that reaches its backend, allow for warm-up,
+and fail the run on anything but success. The nightly run makes the same builds and
+packages a deploy makes and publishes nothing, so a broken deploy path shows within a
+day of the change that broke it.
+
+<!-- profile: 12.1 -->
 
 ---
 
@@ -778,6 +863,11 @@ agent attention on the rest.
     Removed behavior has had its scenarios deleted, no scenario is skipped, only
     unbuilt behavior carries `@pending`, and the full `test:e2e` suite passes
     ([§11.1](#111-end-to-end-coverage)).
+13. **CI and secrets?** No secret reaches the CI that runs pull-request checks, no
+    report-only work runs on a pull request, no path filter starts a required check,
+    and every action and runner image is pinned. A new deploy secret sits in a store
+    with a branch check and is read only by the branch that deploys
+    ([§12.1](#121-continuous-integration-and-deploys)).
 <!-- profile: 14 -->
-13. **Smell pass** — walk [§13](#13-code-smell-baseline) and flag findings as
+14. **Smell pass** — walk [§13](#13-code-smell-baseline) and flag findings as
     judgement calls, not hard violations.

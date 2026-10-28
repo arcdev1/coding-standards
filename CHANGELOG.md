@@ -7,22 +7,136 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
-## 2.0.0 — 2026-10-15
+## 3.0.0 — 2026-10-27
 
-- Replaced §6's hand-rolled server-only guard with TanStack Start's import
-  protection. A secret-holding leaf module (the database client, the auth instance)
-  now opens with `import '@tanstack/react-start/server-only'`, and the local
-  `lib/server-only` module that threw when `import.meta.env.SSR` was false is gone.
-  The marker fails `vite build` when any client import chain reaches the file and
-  prints that chain. The hand-rolled guard let the build pass, shipped the module
-  and its secrets in the client bundle, and threw only in the browser. §6 notes
-  Start's default `*.server.*` file-name rule and keeps §4's file names. §0's
+- `tanstack-start`: replaced §6's hand-rolled server-only guard with TanStack Start's
+  import protection. A secret-holding leaf module (the database client, the auth
+  instance) now opens with `import '@tanstack/react-start/server-only'`, and the
+  local `lib/server-only` module that threw when `import.meta.env.SSR` was false is
+  gone. The marker fails `vite build` when any client import chain reaches the file
+  and prints that chain. The hand-rolled guard let the build pass, shipped the
+  module and its secrets in the client bundle, and threw only in the browser. §6
+  notes Start's default `*.server.*` file-name rule and keeps §4's file names. §0's
   table gains a row for the marker, §4's `src/lib/` row drops the guard, and
-  review-checklist item 3 checks for the marker. To migrate, replace each
-  `import '#/lib/server-only'` with the marker import and delete the local module.
-  MAJOR: a hand-rolled guard that passed review now fails checklist items 2 and 3.
-  Source: TanStack Start docs,
+  review-checklist item 14 ("TanStack specifics?") checks for the marker. To
+  migrate, replace each `import '#/lib/server-only'` with the marker import and
+  delete the local module.
+- Only the `tanstack-start` profile changes; the core and the other profiles are
+  untouched.
+- MAJOR: a hand-rolled guard that passed review now fails checklist items 2 and 14.
+  Drafted as 2.0.0 on 2026-10-15 against 1.7.0; renumbered because 2.0.0 through
+  2.2.0 shipped first. Source: TanStack Start docs,
   [Import Protection](https://tanstack.com/start/latest/docs/framework/react/guide/import-protection).
+
+## 2.2.0 — 2026-10-25
+
+- Added §12.1, "Continuous integration and deploys". Four lanes, each with what it runs,
+  its wall-time budget, and what a failure blocks: a pull request into the trunk (10
+  minutes), the release pull request (15 minutes), a push to a deploying branch (10
+  minutes), and the nightly run on the trunk. Rules that keep them fast: one required
+  check that aggregates every job, change detection inside the workflow instead of a
+  trigger path filter, report-only work such as coverage off pull requests, parallel
+  shards to meet the budget (one job per pipeline on a single-runner CI service), pinned
+  runner images, actions and tool versions, and at most one retry in CI.
+- Added the secrets rules to §12.1. The CI that runs pull-request checks holds no
+  secret, gets a read-only token, and scans every pull request's commits. A deploy
+  secret sits in a store that carries a branch check naming the one ref allowed to read
+  it, authorized for its own pipeline, and enters a run when the pipeline compiles.
+  Credentials are short-lived, the boundary is proven after any change, and an exposed
+  secret is rotated.
+- Every deploy ends in a smoke check, and the deploy path runs nightly as a dry run.
+- §11.1: CI runs the full `test:e2e` suite on every pull request that changes
+  application code, and that run is the merge evidence; the author runs the scenarios a
+  change touches. §2, §12 and the §14 checklist point to §12.1, and the read-by-change
+  table gains a row for CI, deploy pipelines and secrets.
+- `tanstack-start` and `capacitor-pwa` fill the new 12.1 slot: CI's PostgreSQL service
+  container and version files; the keyless e2e build, a build flag's own suite, and
+  unsigned bundle checks.
+- This repo's own check workflow follows §12.1: actions pinned to commit SHAs, a
+  read-only token, a pinned runner image, and Node from `.nvmrc`.
+- MINOR: rules added. Each assembled copy grows by about 90 lines, which takes
+  `kotlin-spring`, `python-fastapi` and `rust-cli` past the 1,000-line budget warning
+  that `capacitor-pwa` and `tanstack-start` already carried.
+
+## 2.1.2 — 2026-10-23
+
+- Fixed the sync runner doing nothing when run through a symlinked path. The 2.1.0
+  runner decided whether it was the main script by comparing `process.argv[1]` with
+  `import.meta.url`, but node resolves symlinks for the main module, so a run from
+  macOS's `/var/folders/…` temp directory (where the orchestrator builds sync
+  commits) exited 0 without writing anything. The 2026-10-23 sync PRs carried only the
+  new runner as a result. The check now compares real paths.
+- Formatted `scripts/standards-sync.mjs` and `scripts/build.mjs` with the house Prettier
+  settings, since some consumers format-check the vendored runner.
+- PATCH: no rule changes.
+
+## 2.1.1 — 2026-10-22
+
+- Every assembled copy now opens with a generated **Contents** list linking each
+  numbered section and its subsections, and "How to use this document" gains a table
+  mapping each kind of change to the sections to read. Together they are the navigation
+  pointers the `retro` skill asks for once a standards file passes 1,000 lines.
+- "How this standard relates to a project's own docs" now says where a new rule goes: a
+  rule only this project needs goes in its local profile, one every project needs goes
+  upstream, and the generated copy is never edited. This gives `retro` and `correct`
+  a target that `standards:check` accepts.
+- Removed text the `tanstack-start` profile repeated from the core (§1, §5, §5.2, §7.2).
+  `scripts/build.mjs` prints each profile's assembled length and warns above 1,000 lines.
+- PATCH: wording and navigation only; nothing that passed review fails now.
+
+## 2.1.0 — 2026-10-22
+
+- Split the standard into a language-neutral **core** (`standard/core.md`) and **stack
+  profiles** (`standard/profiles/`). Each profile fills the core's numbered slots, so a
+  section number means the same thing on every stack. A consumer's vendored copy is
+  assembled from the core plus the profiles it names in `.standards.json`, plus any
+  repo-local profile for rules only that project has; with no config it gets
+  `tanstack-start`. The root `CODING_STANDARDS.md` is now build output (core +
+  `tanstack-start`, by `scripts/build.mjs`), and a CI check fails when it is stale or a
+  profile fills a slot the core lacks. Reason: chaos and xcog had to fork the whole file
+  to change their stack sections, so core rules such as §11.1 reached them only by hand.
+- Five profiles: `tanstack-start` (2.0.0's stack rules, moved without change),
+  `capacitor-pwa` (the offline-first client, distilled from chaos's fork),
+  `kotlin-spring` (from 2257etc's `service/pdf`), `python-fastapi` (from xcog's backend)
+  and `rust-cli` (from preview-rs).
+- §11.1 now names the interface per kind of app: a web UI through playwright-bdd as
+  before, a command-line tool by running its built binary, and a component with no UI of
+  its own through its consuming app's scenarios.
+- The TanStack checklist gains item 13 ("TanStack specifics?"), holding the stack details
+  items 3, 7, 8 and 10 named before; the smell pass becomes item 14.
+- Sync runner: `.standards.json` with scoped and local profiles, labelled blocks when
+  several profiles fill one section, `--check` also catching an edited local profile,
+  and `--source <dir>` to rehearse against a local checkout.
+- MINOR: nothing that passed review on a TanStack app fails now; the new profiles add
+  rules for stacks the standard didn't cover. Source: Bill, core-plus-profiles decision.
+
+## 2.0.0 — 2026-10-22
+
+- Added §11.1 "End-to-end coverage". Every user-observable behavior (a page or flow,
+  a validation message, an error or empty state, a permission denial, a redirect, an
+  email or file the app sends) is specified in a Gherkin `.feature` file and
+  exercised through playwright-bdd. A change is complete only when its behavior is in
+  a feature file and the full `test:e2e` suite passes: new features add scenarios,
+  behavior changes edit them, user-facing bug fixes add a scenario that fails before
+  the fix, removals delete them, and behavior-preserving refactors leave them alone.
+  A tagged CI subset (`@smoke`) may gate the deploy, but the full suite runs before
+  merge. A skipped scenario (`@skip`, `@fixme`, an undefined step) is not coverage.
+  `@pending` is the one exception: it marks a scenario for behavior the app does not
+  have yet, is excluded at generation (`tags: 'not @pending'`), counts as coverage
+  for nothing, and comes off in the change that builds the behavior. No other tag may
+  exclude a scenario from the full run.
+  Steps are written in domain language at the level of user intent, with selectors
+  in step definitions. Each distinct user-visible outcome gets a scenario, and the
+  inputs behind one outcome stay in unit tests. Adds the `features/` layout and moves
+  the serial-run and row-marker rules from the §11 bullet list into §11.1.
+- §2's gate gains a fifth script, `test:e2e` (`bddgen && playwright test`): the first
+  four still run on every commit, and `test:e2e` must pass before a change is
+  complete. §12 makes the full `test:e2e` run a merge precondition. Added
+  review-checklist item 12 ("Behavior covered end to end?") and renumbered the smell
+  pass to 13.
+- MAJOR: a change that passed review before fails now if its behavior has no passing
+  scenario, and an app whose CI runs only a smoke subset must also run the full suite
+  before merge. Source: Bill, E2E-as-definition-of-done decision.
 
 ## 1.7.0 — 2026-10-10
 

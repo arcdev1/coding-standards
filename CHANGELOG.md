@@ -7,6 +7,27 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 3.0.0 — 2026-10-27
+
+- `tanstack-start`: replaced §6's hand-rolled server-only guard with TanStack Start's
+  import protection. A secret-holding leaf module (the database client, the auth
+  instance) now opens with `import '@tanstack/react-start/server-only'`, and the
+  local `lib/server-only` module that threw when `import.meta.env.SSR` was false is
+  gone. The marker fails `vite build` when any client import chain reaches the file
+  and prints that chain. The hand-rolled guard let the build pass, shipped the
+  module and its secrets in the client bundle, and threw only in the browser. §6
+  notes Start's default `*.server.*` file-name rule and keeps §4's file names. §0's
+  table gains a row for the marker, §4's `src/lib/` row drops the guard, and
+  review-checklist item 14 ("TanStack specifics?") checks for the marker. To
+  migrate, replace each `import '#/lib/server-only'` with the marker import and
+  delete the local module.
+- Only the `tanstack-start` profile changes; the core and the other profiles are
+  untouched.
+- MAJOR: a hand-rolled guard that passed review now fails checklist items 2 and 14.
+  Drafted as 2.0.0 on 2026-10-15 against 1.7.0; renumbered because 2.0.0 through
+  2.2.0 shipped first. Source: TanStack Start docs,
+  [Import Protection](https://tanstack.com/start/latest/docs/framework/react/guide/import-protection).
+
 ## 2.2.0 — 2026-10-25
 
 - Added §12.1, "Continuous integration and deploys". Four lanes, each with what it runs,

@@ -7,6 +7,14 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 3.6.0 — 2026-11-16
+
+- Core §12.1: a push to a deploying branch that changes only documentation, the
+  vendored standard's version stamp, or the pull-request CI's configuration does not
+  build or deploy; the deploy trigger carries the path filter, and a release tag
+  always deploys. Seen on dance-rehearsal, where every standards sync deployed dev
+  and held the organization's one build agent (PR #221).
+
 ## 3.5.0 — 2026-11-16
 
 - Core §12.1: the required check is reported only by the full run and by a change to

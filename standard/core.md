@@ -118,7 +118,8 @@ These are machine-enforced. **Do not flag them in review** — run the command.
 **The gate.** Every project wires the same five steps under the same names, so
 people, agents, and CI call them the same way on every stack. The first four must
 pass on every commit. `test:e2e` takes longer and must pass before a change merges
-([§11.1](#111-end-to-end-coverage)). CI runs all five on each pull request
+([§11.1](#111-end-to-end-coverage)). CI runs the first four on every push to a pull
+request and the full `test:e2e` on the commit that merges
 ([§12.1](#121-continuous-integration-and-deploys)).
 
 | Step        | Runs                                  |
@@ -623,12 +624,32 @@ their own. Each kind of change updates the feature files in the same change set:
 - **A refactor** that preserves behavior leaves the feature files as they are, and
   the passing suite is its evidence.
 
-**The full suite passes before a change merges, and CI runs it.** A change can break
-a scenario in another feature, so `test:e2e` runs every scenario on every pull request
-that changes application code ([§12.1](#121-continuous-integration-and-deploys)). That
-run is the evidence the change works: the author runs the scenarios the change touches
-while working and leaves the full run to CI. A deploy may run a tagged subset
-(`@smoke`) against the deployed app; the full run before merge still applies.
+**The full suite passes before a change merges, and CI runs it once, on the commit
+that merges.** A change can break a scenario in another feature, so `test:e2e` runs
+every scenario on the head commit of a pull request that changes application code,
+when that pull request is marked ready to merge
+([§12.1](#121-continuous-integration-and-deploys)). That run is the evidence the change
+works. Every earlier push runs the scenarios tagged `@smoke`, and the author runs the
+scenarios the change touches while working. A deploy may run the same `@smoke` subset
+against the deployed app; the full run before merge still applies.
+
+**`@smoke` marks the scenarios that run on every push.** Tag the few scenarios that
+prove each main journey works from start to finish: one per journey, on its
+successful path. The tagged set finishes in two minutes on one runner. A scenario for
+a validation message, a refusal, or an edge case does not carry the tag.
+
+**A scenario spends its time on the behavior it names.** The suite stays fast enough
+to run in full before every merge when each scenario pays only for what it tests.
+
+- **A `Given` step puts state in place through the app's own services**, called by a
+  step helper or a test-only endpoint, never by clicking through the interface. Signing
+  up, creating an account, or creating a record through the interface belongs in the
+  `When` steps of the one feature that specifies that flow.
+- **A scenario that starts signed in reuses a saved session** where the runner
+  supports one, and signs in through the interface only in the features that specify
+  signing in.
+- **A `Then` step still asserts through the interface.** Seeding changes how a
+  scenario reaches its starting state and nothing about what it must observe.
 
 **A skipped scenario covers nothing.** A scenario tagged `@skip` or `@fixme`, or one
 with an undefined step, does not count as coverage. A change that skips a scenario
@@ -691,7 +712,7 @@ change as the code it describes.
 - **Every commit leaves the automated gate green.** `check`, `lint`, `typecheck`,
   and `test` pass ([§2](#2-formatting-lint-and-types-automated)). A change is not
   ready to merge until its behavior is in a feature file and the full `test:e2e`
-  suite passes on its pull request ([§11.1](#111-end-to-end-coverage),
+  suite passes on its head commit ([§11.1](#111-end-to-end-coverage),
   [§12.1](#121-continuous-integration-and-deploys)).
 - **Record cross-cutting decisions as ADRs** in the repository, so the reasoning is
   durable and these standards and the code stay consistent as the app grows.
@@ -708,25 +729,36 @@ secret, and a deploy runs only from the branch that deploys it.
 
 | Trigger                                   | Runs                                                                                                                                                         | Wall time | A failure blocks            |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- | --------------------------- |
-| a pull request into the trunk             | a secret scan of its commits, the four per-commit gate steps (`test` on a throwaway database), the production builds, and `test:e2e` when application code changed | 10 min    | the merge                   |
-| the release pull request                  | the same with `test:e2e` always, plus a summary of what changed in the CI, deploy, and test configuration since the last release                           | 15 min    | the release                 |
+| a push to a pull request into the trunk | a secret scan of its commits, the four per-commit gate steps (`test` on a throwaway database), the production builds, and the `@smoke` scenarios when application code changed | 10 min    | the merge                   |
+| a pull request marked ready to merge    | the full `test:e2e` on its head commit, when application code changed                                                                                        | 15 min    | the merge                   |
+| the release pull request                  | both lanes above, with the full `test:e2e` always, plus a summary of what changed in the CI, deploy, and test configuration since the last release                           | 15 min    | the release                 |
 | a push to a deploying branch              | build, migrate, deploy, then a smoke check of the deployed app                                                                                               | 10 min    | the rest of that deploy     |
-| a nightly schedule on the trunk           | report-only measurements such as coverage, slow suites, and a dry run of the deploy path that publishes nothing                                              | no limit  | the next release, while red |
+| a nightly schedule on the trunk           | the full `test:e2e`, report-only measurements such as coverage and slow suites, and a dry run of the deploy path that publishes nothing                                              | no limit  | the next release, while red |
 
 - **One required check.** The pull-request workflow ends in one job that passes only
   when every other job passed or was skipped, and branch protection requires that job
   alone. Adding, splitting, or sharding jobs then leaves the protection rules as they
   are.
+- **The full suite runs once per merge.** A pull request is marked ready to merge by
+  entering the merge queue where the CI service has one, and by a label or a manual
+  trigger where it does not. The mark starts the full `test:e2e` on the head commit.
+  Until that run has passed on the current head, the required check fails with a
+  message saying the full run is outstanding. A commit pushed after the mark needs the
+  full run again. A pull request that changes documentation alone needs no mark.
 - **Decide what runs inside the workflow, never with a trigger's path filter.** A
   required check whose workflow a path filter never starts waits forever. A first job
   compares the change with its base, and later jobs skip by condition, which counts as
   passing. A change to documentation alone (Markdown files and the docs folder) skips
-  `test:e2e`; any other change runs it.
+  the `@smoke` scenarios and `test:e2e`; any other change runs them.
 - **Report-only work never runs on a pull request.** A coverage report, or any other
   measurement that cannot fail the check, runs nightly.
 - **Meet the time budget with parallel jobs, never by dropping a check.** Shard
   `test:e2e` across runners when one runner overruns, build what the shards serve once
   and share it, and cancel a pull request's run in progress when a new commit arrives.
+- **Know what a run costs.** Shards shorten the wait and bill the same total, plus
+  each shard's own setup. Record the billed minutes of one full run in the repository's
+  CI notes, and measure again when the suite has grown by half. A full run on every
+  push multiplies that figure by every push; the lanes above run it once per merge.
   On a CI service with a single runner, make each pipeline one job, because every extra
   job waits in the queue again.
 - **Pin what CI runs.** Pin a runner image to a version, and every action or task to
@@ -862,6 +894,8 @@ agent attention on the rest.
     changes, or fixes appears in a `.feature` scenario written in domain language.
     Removed behavior has had its scenarios deleted, no scenario is skipped, only
     unbuilt behavior carries `@pending`, and the full `test:e2e` suite passes
+    on the head commit. `Given` steps seed state through the app's services, and
+    `@smoke` sits only on main-journey scenarios
     ([§11.1](#111-end-to-end-coverage)).
 13. **CI and secrets?** No secret reaches the CI that runs pull-request checks, no
     report-only work runs on a pull request, no path filter starts a required check,

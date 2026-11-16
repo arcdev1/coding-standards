@@ -7,6 +7,26 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 3.1.0 — 2026-11-15
+
+- Core §11.1 and §12.1: the full `test:e2e` suite now runs in CI once per merge, on
+  the head commit of a pull request marked ready to merge (a merge queue, a label, or
+  a manual trigger), and nightly on the trunk. Every earlier push to a pull request
+  runs the four per-commit gate steps, the production builds, and the `@smoke`
+  scenarios. The required check fails until the full run has passed on the current
+  head, so the rule that the full suite passes before a merge is unchanged. Running
+  the full suite on every push repeated a run the author had just made and billed the
+  whole suite for each push.
+- Core §11.1: `@smoke` is defined as one successful-path scenario per main journey,
+  finishing in two minutes on one runner. `Given` steps seed state through the app's
+  own services, a scenario that starts signed in reuses a saved session, and `Then`
+  steps still assert through the interface.
+- Core §12.1: a repository records the billed minutes of one full CI run and measures
+  again when the suite has grown by half.
+- Core §2 and review-checklist item 12 follow the two changes above.
+- MINOR: rules added. A CI that still runs the full suite on every push meets the
+  merge rule and is out of step with the lanes table.
+
 ## 3.0.0 — 2026-10-27
 
 - `tanstack-start`: replaced §6's hand-rolled server-only guard with TanStack Start's

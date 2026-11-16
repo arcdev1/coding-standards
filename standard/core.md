@@ -775,13 +775,17 @@ secret, and a deploy runs only from the branch that deploys it.
 - **One required check.** The pull-request workflow ends in one job that passes only
   when every other job passed or was skipped, and branch protection requires that job
   alone. Adding, splitting, or sharding jobs then leaves the protection rules as they
-  are.
+  are. The lanes below depend on that protection: without it a pull request can merge
+  on its push run alone, so the change that adopts the lanes also turns it on.
 - **The full suite runs once per merge.** A pull request is marked ready to merge by
   entering the merge queue where the CI service has one, and by a label or a manual
   trigger where it does not. The mark starts the full `test:e2e` on the head commit.
   Until that run has passed on the current head, the required check fails with a
   message saying the full run is outstanding. Mark a pull request when its review is
-  done and no further commit is planned. A commit pushed after the mark needs the full
+  done and no further commit is planned. An automated contributor never marks its own
+  pull request: whoever reviews it marks it. Where the full suite runs faster on a
+  developer machine than in CI, run it there before marking, so the CI run confirms a
+  result instead of finding a failure. A commit pushed after the mark needs the full
   run again. A pull request that changes documentation alone needs no mark.
 - **Decide what runs inside the workflow, never with a trigger's path filter.** A
   required check whose workflow a path filter never starts waits forever. A first job
@@ -793,14 +797,17 @@ secret, and a deploy runs only from the branch that deploys it.
 - **Meet the time budget with parallel jobs, never by dropping a check.** Shard
   `test:e2e` across runners when one runner overruns, build what the shards serve once
   and share it, and cancel a pull request's run in progress when a new commit arrives.
-- **Size the scheduled full run to its cost.** Nightly is the default. Where a full
-  run costs enough that a nightly one would rival the month's pull-request checks, run
-  it weekly, skip it when the trunk has no new commit, and record the choice and the
-  figures in the repository's CI notes.
+- **Size the scheduled full run to its cost.** Nightly is the default, and a scheduled
+  run skips when the trunk has no new commit since the last one. Where a full run
+  costs enough that a nightly one would rival the month's pull-request checks, run it
+  weekly, and record the choice and the figures in the repository's CI notes.
 - **Know what a run costs.** Shards shorten the wait and bill the same total, plus
-  each shard's own setup. Record the billed minutes of one full run in the repository's
-  CI notes, and measure again when the suite has grown by half. A full run on every
-  push multiplies that figure by every push; the lanes above run it once per merge.
+  each shard's own setup. Record the billed minutes of one push run and one full run in
+  the repository's CI notes, and measure again when the suite has grown by half. A full
+  run on every push multiplies that figure by every push; the lanes above run it once
+  per merge. Push a branch when its commits are ready to be checked, not after each
+  commit: every push bills a run, and a run the next push cancels still bills the
+  minutes it used.
   On a CI service with a single runner, make each pipeline one job, because every extra
   job waits in the queue again.
 - **Pin what CI runs.** Pin a runner image to a version, and every action or task to
@@ -944,8 +951,9 @@ agent attention on the rest.
     ([§11.1](#111-end-to-end-coverage)).
 13. **CI and secrets?** No secret reaches the CI that runs pull-request checks, no
     report-only work runs on a pull request, no path filter starts a required check,
-    and every action and runner image is pinned. A new deploy secret sits in a store
-    with a branch check and is read only by the branch that deploys
+    the full `test:e2e` runs once per merge behind the one aggregate check that branch
+    protection requires, and every action and runner image is pinned. A new deploy
+    secret sits in a store with a branch check and is read only by the branch that deploys
     ([§12.1](#121-continuous-integration-and-deploys)).
 <!-- profile: 14 -->
 14. **Smell pass** — walk [§13](#13-code-smell-baseline) and flag findings as

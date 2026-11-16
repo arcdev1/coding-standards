@@ -604,7 +604,10 @@ machine-readable code; one global handler maps the code to an HTTP status.
   test-database name deterministically from the worktree's identity (for example, a
   hash of its path), so many worktrees or checkouts run at once without collision.
   Never hardcode a port or pass `--port`, and never point a test at the dev
-  database.
+  database. On a Linux runner, keep every port a test binds below 32768, out of the
+  kernel's range for outgoing connections (32768 to 60999), or reserve the band
+  before anything boots (`sysctl net.ipv4.ip_local_reserved_ports`); a port in that
+  range can already be taken by an outgoing connection.
 
 <!-- profile: 11 -->
 
@@ -793,8 +796,12 @@ secret, and a deploy runs only from the branch that deploys it.
 - **The full suite runs once per merge.** A pull request is marked ready to merge by
   entering the merge queue where the CI service has one, and by a label or a manual
   trigger where it does not. The mark starts the full `test:e2e` on the head commit.
-  Until that run has passed on the current head, the required check fails with a
-  message saying the full run is outstanding. Mark a pull request when its review is
+  Only the full run, and a change to documentation alone, reports the required check.
+  A push run of a code change reports the same last job under another name (such as
+  `push-ok`), green when the push jobs passed, so the pull request waits for the
+  required check without a failure on every push, and a red check always means
+  something failed. Name the one job by an expression rather than splitting it in
+  two: a required job that is skipped counts as passing. Mark a pull request when its review is
   done and no further commit is planned. An automated contributor never marks its own
   pull request: whoever reviews it marks it. Where the full suite runs faster on a
   developer machine than in CI, run it there before marking, so the CI run confirms a

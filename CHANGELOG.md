@@ -7,6 +7,17 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 3.5.0 — 2026-11-16
+
+- Core §12.1: the required check is reported only by the full run and by a change to
+  documentation alone. A push run of a code change reports the last job under another
+  name (such as `push-ok`), so it no longer fails on every push while the full run is
+  outstanding; the job is named by an expression, never split in two, because a
+  skipped required job counts as passing. Seen on 2257etc (PR #716, ADR 0040).
+- Core §11: test ports on a Linux runner stay below 32768 or have their band
+  reserved, since the kernel's outgoing-connection range can hold them (2257etc
+  deploy build 1648, "Port 40862 was already in use").
+
 ## 3.4.0 — 2026-11-16
 
 - Core §11: a test must fail when the behavior it names breaks. Tautological tests

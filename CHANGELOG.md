@@ -7,6 +7,12 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 3.3.0 — 2026-11-16
+
+- Core §12.1: a pull request is marked ready to merge when its review is done and no
+  further commit is planned, so a fix pushed after review does not bill a second full
+  `test:e2e` run.
+
 ## 3.2.0 — 2026-11-16
 
 - Core §11.1: a scenario is for a distinct screen, sentence, or interface-only

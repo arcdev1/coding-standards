@@ -780,8 +780,9 @@ secret, and a deploy runs only from the branch that deploys it.
   entering the merge queue where the CI service has one, and by a label or a manual
   trigger where it does not. The mark starts the full `test:e2e` on the head commit.
   Until that run has passed on the current head, the required check fails with a
-  message saying the full run is outstanding. A commit pushed after the mark needs the
-  full run again. A pull request that changes documentation alone needs no mark.
+  message saying the full run is outstanding. Mark a pull request when its review is
+  done and no further commit is planned. A commit pushed after the mark needs the full
+  run again. A pull request that changes documentation alone needs no mark.
 - **Decide what runs inside the workflow, never with a trigger's path filter.** A
   required check whose workflow a path filter never starts waits forever. A first job
   compares the change with its base, and later jobs skip by condition, which counts as

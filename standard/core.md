@@ -814,6 +814,12 @@ secret, and a deploy runs only from the branch that deploys it.
   vendored standard's version stamp, so a standards sync takes this lane) skips the
   `@smoke` scenarios and `test:e2e`; any other change runs them. Where the app serves
   those files to its users, they are not documentation for this rule.
+- **A push that changes nothing the app ships does not deploy.** The deploy trigger on
+  a deploying branch excludes the same documentation files, plus the pull-request CI's
+  own configuration, so a documentation change or a standards sync builds and deploys
+  nothing. A path filter is right here, because no required check waits on a deploy
+  trigger. A release tag always deploys. A push that also changes shipped code deploys
+  as usual.
 - **Report-only work never runs on a pull request.** A coverage report, or any other
   measurement that cannot fail the check, runs nightly.
 - **Meet the time budget with parallel jobs, never by dropping a check.** Shard

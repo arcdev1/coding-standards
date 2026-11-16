@@ -7,6 +7,16 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 3.4.0 — 2026-11-16
+
+- Core §11: a test must fail when the behavior it names breaks. Tautological tests
+  (asserting their own mock, computing the expectation with the code under test,
+  testing what the compiler or database enforces, passing because nothing threw,
+  unread snapshots) and duplicates at the same or a faster tier are deleted or
+  rewritten. A new test is proven by breaking its code once. Review item 11 checks it.
+- Core §12.1: the vendored standard's version stamp counts as documentation, so a
+  standards sync takes the docs-only lane; files the app serves to its users do not.
+
 ## 3.3.0 — 2026-11-16
 
 - Core §12.1: a pull request is marked ready to merge when its review is done and no

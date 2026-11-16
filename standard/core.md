@@ -587,6 +587,19 @@ machine-readable code; one global handler maps the code to an HTTP status.
   existing seam — the service for an aggregate — never private internals or the
   order of declarations inside a file. A refactor that preserves behavior must not
   require a test change.
+- **A test must fail when the behavior it names breaks.** A test that would still
+  pass with the code under test deleted, or its result inverted, proves nothing and
+  still bills a run on every push. Delete it or rewrite it:
+  - a test that asserts what its own mock, stub, or fixture returns;
+  - a test whose expected value is computed by the code under test;
+  - a test of a constant, a type, or a constraint the compiler or the database
+    already enforces;
+  - a test whose only check is that nothing threw, where throwing is not the
+    behavior;
+  - a snapshot that no reviewer reads.
+
+  Prove a new test by breaking the code it covers once and watching it fail. A test
+  that repeats another at the same or a faster tier is deleted too.
 - **Isolate parallel work without hardcoding.** Derive the dev-server port and the
   test-database name deterministically from the worktree's identity (for example, a
   hash of its path), so many worktrees or checkouts run at once without collision.
@@ -790,8 +803,10 @@ secret, and a deploy runs only from the branch that deploys it.
 - **Decide what runs inside the workflow, never with a trigger's path filter.** A
   required check whose workflow a path filter never starts waits forever. A first job
   compares the change with its base, and later jobs skip by condition, which counts as
-  passing. A change to documentation alone (Markdown files and the docs folder) skips
-  the `@smoke` scenarios and `test:e2e`; any other change runs them.
+  passing. A change to documentation alone (Markdown files, the docs folder, and the
+  vendored standard's version stamp, so a standards sync takes this lane) skips the
+  `@smoke` scenarios and `test:e2e`; any other change runs them. Where the app serves
+  those files to its users, they are not documentation for this rule.
 - **Report-only work never runs on a pull request.** A coverage report, or any other
   measurement that cannot fail the check, runs nightly.
 - **Meet the time budget with parallel jobs, never by dropping a check.** Shard
@@ -938,7 +953,9 @@ agent attention on the rest.
     write, deferring to framework-owned signatures; a named object for a multi-value
     return, never a tuple ([§5](#5-module-organization)).
 11. **Tests at the right seam?** Behavior through the exported API against an
-    isolated test database, not internals ([§11](#11-testing)).
+    isolated test database, not internals, and every new test fails with the
+    behavior it names broken: none asserts its own mock, computes its expectation
+    with the code under test, or repeats another test ([§11](#11-testing)).
 12. **Behavior covered end to end?** Every user-observable behavior the diff adds,
     changes, or fixes appears in a `.feature` scenario written in domain language.
     Removed behavior has had its scenarios deleted, no scenario is skipped, only

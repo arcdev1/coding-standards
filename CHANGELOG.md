@@ -7,6 +7,33 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 3.2.0 — 2026-11-16
+
+- Core §11.1: a scenario is for a distinct screen, sentence, or interface-only
+  behavior. A case that differs from an existing scenario only by input, role, cause,
+  or boundary value is proven by a unit or integration test that asserts the sentence
+  shown. A scenario that never opens the interface moves to the HTTP or integration
+  tests, shared machinery is specified once per surface, and a `Then` must fail when
+  the feature is removed. Read literally, "every user-observable behavior is a
+  scenario" had produced dozens of scenarios for one error handler.
+- Core §11.1: rules for a cheap suite. Seeding endpoints are test-only behind one
+  guard and call the app's services. Scenarios run in parallel, one database and one
+  app process per worker, once the suite takes more than five minutes on one worker.
+  A browser suite runs with reduced motion. Measure a scenario's phases before
+  changing the harness.
+- Core §12.1: the scheduled full run on the trunk is nightly by default and sized to
+  its cost.
+- `tanstack-start` §11.1 and §12.1: one database and one app server per Playwright
+  worker in place of `workers: 1`; run against a build, never `vite dev`;
+  `reducedMotion: 'reduce'`; shards share one build, a test build where the suite
+  needs test-only code, kept out of the image; two workers per CI runner to start.
+- Review-checklist item 12 asks whether a new scenario repeats an existing one or a
+  faster test.
+- Measured on one consumer with about 400 browser scenarios: waiting on entrance
+  animations was 42% of a scenario's time, setup through the interface 23%, and the
+  dev server 15%. With these rules a full local run went from 69 minutes to 8.
+- MINOR: rules added. A suite under five minutes on one worker may stay serial.
+
 ## 3.1.0 — 2026-11-15
 
 - Core §11.1 and §12.1: the full `test:e2e` suite now runs in CI once per merge, on

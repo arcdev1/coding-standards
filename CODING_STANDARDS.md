@@ -1090,6 +1090,25 @@ works. Every earlier push runs the scenarios tagged `@smoke`, and the author run
 scenarios the change touches while working. A deploy may run the same `@smoke` subset
 against the deployed app; the full run before merge still applies.
 
+**One scenario per distinct thing a user sees; variations go in a faster test.** A
+behavior earns its own scenario when it is a distinct screen or flow, a distinct
+sentence or state on a distinct screen, or something only the running interface can
+show (a leave-page prompt, drag and drop, a dialog, the layout at phone width, a route
+that bypasses the usual middleware). A case that differs from an existing scenario
+only by input, role, cause, or boundary value is proven by a unit or integration test
+instead, and that test asserts the sentence or state the user would see, never only
+an error code. Ten refusals that end on one message need one scenario and ten faster
+tests.
+
+- **A scenario that never opens the interface is in the wrong suite.** A check made
+  only by calling an endpoint belongs with the HTTP or integration tests.
+- **Before adding a scenario, look for the one it repeats.** Shared machinery (the
+  error page, the sign-in redirect, the session-expiry handler, a rate limit) is
+  specified once per distinct surface that shows it, however many features reach it.
+- **A `Then` step must fail when the feature is removed.** A step that asserts only
+  that something is absent first asserts that the right page is on screen, and a step
+  compares against the words as written, never against the constant the app renders.
+
 **`@smoke` marks the scenarios that run on every push.** Tag the few scenarios that
 prove each main journey works from start to finish: one per journey, on its
 successful path. The tagged set finishes in two minutes on one runner. A scenario for
@@ -1107,6 +1126,24 @@ to run in full before every merge when each scenario pays only for what it tests
   signing in.
 - **A `Then` step still asserts through the interface.** Seeding changes how a
   scenario reaches its starting state and nothing about what it must observe.
+- **A seeding endpoint is test-only and proves it.** Each one sits behind one shared
+  guard that requires both a flag no deployed environment sets and a database whose
+  name is in the test family, creates state by calling the app's own services so
+  audit records and tenant scoping hold, and has an HTTP-level test showing it answers
+  not-found without the flag. An endpoint that signs a user in still checks their
+  credentials.
+- **Scenarios run in parallel once the suite takes more than five minutes on one
+  worker.** Each worker gets its own throwaway database and its own app process, so
+  in-memory state (rate-limit counters, captured mail, a test clock) is isolated with
+  the data. A suite that shares one server and one database is serial by construction,
+  and its cost grows with every scenario.
+- **A browser suite runs with reduced motion, and the app honors it.** A runner waits
+  for an element to stop moving before it acts, so an entrance animation is paid for
+  on every step. Content that is invisible until a script runs is a defect in its own
+  right: render it visible and animate with the stylesheet.
+- **Measure before optimizing.** Time one scenario's phases (waiting on the page,
+  setup, the steps themselves, reset) before changing the harness. The largest cost is
+  rarely the suspected one.
 
 **A skipped scenario covers nothing.** A scenario tagged `@skip` or `@fixme`, or one
 with an undefined step, does not count as coverage. A change that skips a scenario
@@ -1150,7 +1187,16 @@ playwright-bdd compiles the feature files into Playwright specs with `bddgen`.
   `missingSteps: 'fail-on-gen'`.
 - **Exclude `@pending` at generation**: `defineBddConfig({ tags: 'not @pending', … })`,
   so its undefined steps do not fail `bddgen`.
-- **Run serially with `workers: 1`** when scenarios share global state.
+- **One database and one app server per Playwright worker.** The config derives each
+  worker's database name and port from the worktree and the worker's parallel index,
+  provisions the databases before the run, and starts one server per worker, so
+  `workers` can be raised without scenarios sharing state. `workers: 1` against one
+  shared server is acceptable only while the full suite takes under five minutes.
+- **Run against a build, never the dev server.** `vite dev` compiles each page on
+  first request, and the suite pays for it on every page.
+- **Set `reducedMotion: 'reduce'`** in the Playwright `use` block.
+- **Seeded sessions come from the auth library's own sign-in**, called from a
+  test-only route under `/api/test/`, which returns the cookies the pages would set.
 
 | Path                            | Holds                                                  |
 | ------------------------------- | ------------------------------------------------------ |
@@ -1202,7 +1248,7 @@ secret, and a deploy runs only from the branch that deploys it.
 | a pull request marked ready to merge    | the full `test:e2e` on its head commit, when application code changed                                                                                        | 15 min    | the merge                   |
 | the release pull request                  | both lanes above, with the full `test:e2e` always, plus a summary of what changed in the CI, deploy, and test configuration since the last release                           | 15 min    | the release                 |
 | a push to a deploying branch              | build, migrate, deploy, then a smoke check of the deployed app                                                                                               | 10 min    | the rest of that deploy     |
-| a nightly schedule on the trunk           | the full `test:e2e`, report-only measurements such as coverage and slow suites, and a dry run of the deploy path that publishes nothing                                              | no limit  | the next release, while red |
+| a schedule on the trunk, nightly by default | the full `test:e2e`, report-only measurements such as coverage and slow suites, and a dry run of the deploy path that publishes nothing                                              | no limit  | the next release, while red |
 
 - **One required check.** The pull-request workflow ends in one job that passes only
   when every other job passed or was skipped, and branch protection requires that job
@@ -1224,6 +1270,10 @@ secret, and a deploy runs only from the branch that deploys it.
 - **Meet the time budget with parallel jobs, never by dropping a check.** Shard
   `test:e2e` across runners when one runner overruns, build what the shards serve once
   and share it, and cancel a pull request's run in progress when a new commit arrives.
+- **Size the scheduled full run to its cost.** Nightly is the default. Where a full
+  run costs enough that a nightly one would rival the month's pull-request checks, run
+  it weekly, skip it when the trunk has no new commit, and record the choice and the
+  figures in the repository's CI notes.
 - **Know what a run costs.** Shards shorten the wait and bill the same total, plus
   each shard's own setup. Record the billed minutes of one full run in the repository's
   CI notes, and measure again when the suite has grown by half. A full run on every
@@ -1283,8 +1333,15 @@ day of the change that broke it.
   shard gets a container of its own.
 - **Versions live in the repository.** Node in `.nvmrc` and pnpm in `package.json`'s
   `packageManager`; CI reads both files and repeats neither version.
-- **`test:e2e` shards share one production build.** One CI job builds the app and
-  hands the output to the shards, and each shard starts its own server from it.
+- **`test:e2e` shards share one build.** One CI job builds the app and hands the
+  output to the shards, and each shard starts its servers from it. Use the production
+  build when the suite needs nothing that build omits. A suite that needs test-only
+  code (fault injection, a demo mode, a stub scanner) uses a test build that writes to
+  its own output directory, is listed in `.dockerignore`, and fails the deploy's
+  health check, so it can never ship as the production image.
+- **Two Playwright workers per CI runner** is the starting point on a two-core
+  runner. Billed minutes are wall-clock minutes per runner, so a second worker cuts
+  the bill only if the runner keeps up: confirm it on the first runs.
 
 ---
 
@@ -1371,7 +1428,10 @@ agent attention on the rest.
     Removed behavior has had its scenarios deleted, no scenario is skipped, only
     unbuilt behavior carries `@pending`, and the full `test:e2e` suite passes
     on the head commit. `Given` steps seed state through the app's services, and
-    `@smoke` sits only on main-journey scenarios
+    `@smoke` sits only on main-journey scenarios. No new scenario repeats an
+    existing one or a faster test, a variation by input, role, or cause sits in a
+    unit or integration test that asserts the sentence shown, and every `Then` would
+    fail with the feature removed
     ([§11.1](#111-end-to-end-coverage)).
 13. **CI and secrets?** No secret reaches the CI that runs pull-request checks, no
     report-only work runs on a pull request, no path filter starts a required check,

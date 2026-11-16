@@ -522,7 +522,16 @@ playwright-bdd compiles the feature files into Playwright specs with `bddgen`.
   `missingSteps: 'fail-on-gen'`.
 - **Exclude `@pending` at generation**: `defineBddConfig({ tags: 'not @pending', … })`,
   so its undefined steps do not fail `bddgen`.
-- **Run serially with `workers: 1`** when scenarios share global state.
+- **One database and one app server per Playwright worker.** The config derives each
+  worker's database name and port from the worktree and the worker's parallel index,
+  provisions the databases before the run, and starts one server per worker, so
+  `workers` can be raised without scenarios sharing state. `workers: 1` against one
+  shared server is acceptable only while the full suite takes under five minutes.
+- **Run against a build, never the dev server.** `vite dev` compiles each page on
+  first request, and the suite pays for it on every page.
+- **Set `reducedMotion: 'reduce'`** in the Playwright `use` block.
+- **Seeded sessions come from the auth library's own sign-in**, called from a
+  test-only route under `/api/test/`, which returns the cookies the pages would set.
 
 | Path                            | Holds                                                  |
 | ------------------------------- | ------------------------------------------------------ |
@@ -552,6 +561,13 @@ playwright-bdd compiles the feature files into Playwright specs with `bddgen`.
   shard gets a container of its own.
 - **Versions live in the repository.** Node in `.nvmrc` and pnpm in `package.json`'s
   `packageManager`; CI reads both files and repeats neither version.
-- **`test:e2e` shards share one production build.** One CI job builds the app and
-  hands the output to the shards, and each shard starts its own server from it.
+- **`test:e2e` shards share one build.** One CI job builds the app and hands the
+  output to the shards, and each shard starts its servers from it. Use the production
+  build when the suite needs nothing that build omits. A suite that needs test-only
+  code (fault injection, a demo mode, a stub scanner) uses a test build that writes to
+  its own output directory, is listed in `.dockerignore`, and fails the deploy's
+  health check, so it can never ship as the production image.
+- **Two Playwright workers per CI runner** is the starting point on a two-core
+  runner. Billed minutes are wall-clock minutes per runner, so a second worker cuts
+  the bill only if the runner keeps up: confirm it on the first runs.
 <!-- /slot -->

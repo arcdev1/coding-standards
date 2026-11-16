@@ -7,6 +7,18 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 3.3.0 — 2026-11-16
+
+- Core §12.1: a pull request is marked ready to merge when its review is done and no
+  further commit is planned, so a fix pushed after review does not bill a second full
+  `test:e2e` run. An automated contributor never marks its own pull request; the
+  reviewer marks it. Where a local full run is faster than CI, it runs before the mark.
+- Core §12.1: the change that adopts the lanes turns on the branch protection that
+  requires the one aggregate check; every scheduled run skips when the trunk has no new
+  commit; repositories record the billed minutes of a push run as well as a full run;
+  a branch is pushed when its commits are ready to be checked, not after each commit.
+- Core §14 item 13 checks the once-per-merge lane and its branch protection.
+
 ## 3.2.0 — 2026-11-16
 
 - Core §11.1: a scenario is for a distinct screen, sentence, or interface-only

@@ -7,6 +7,19 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 3.8.0 — 2026-11-18
+
+- Core §11: time is a parameter, and no test depends on how fast the machine is.
+  Code that decides on time takes `now` from its caller, with direct clock reads
+  linted below the edge; a test never asserts a time limit, sleeps, or races a
+  refill, and moves the clock instead (the runner's fake timers in a unit test, a
+  test-only seam in a built server); randomness in a test is seeded or disjoint;
+  a repository's throttled run, where it has one, runs before the first push of a
+  change to a limit, timeout, queue, or clock test. Review asks whether a test would
+  pass on a machine five times slower. Seen on 2257etc, where three tests that passed
+  on a 28-core machine failed or flaked on the 2-core runner in one week (PRs #718
+  and #733), and about 15 more were found in sweeps.
+
 ## 3.7.0 — 2026-11-17
 
 - Core §12.1: a change the app's suite cannot see skips it. Infrastructure as code,

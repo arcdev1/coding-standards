@@ -600,6 +600,28 @@ machine-readable code; one global handler maps the code to an HTTP status.
 
   Prove a new test by breaking the code it covers once and watching it fail. A test
   that repeats another at the same or a faster tier is deleted too.
+- **Time is a parameter, and no test depends on how fast the machine is.** A
+  developer machine can be several times faster than a CI runner, so a test that
+  races the clock passes locally and fails, or flakes, in CI, and each failure bills
+  another run.
+  - Code that decides on time (a rate limiter, a window, a response floor, a
+    deadline, a token expiry, a retry backoff) takes `now`, and a timer where it
+    waits, from its caller, with the real clock as the default at the edge. Below the
+    edge nothing reads the clock directly; lint direct reads (`Date.now()`, an
+    argument-less `new Date()`, `performance.now()`) in service code where the
+    stack's linter can, exempting the clock module and the edge.
+  - A test never asserts that work took less than a fixed time, never sleeps to let
+    time pass, and never relies on a burst of requests being fast enough to beat a
+    refill or slow enough to span a window. It moves the clock, holds a queue, or
+    asserts order and counts. A unit test may use the test runner's fake timers; a
+    test that drives a built server moves the server's clock through a test-only
+    seam, built like a seeding endpoint ([§11.1](#111-end-to-end-coverage)), and
+    trips a limit by pre-spending it or advancing the clock, never by racing it.
+  - Randomness in a test is seeded, with the seed printed on failure, or drawn from
+    a range no other test uses.
+  - Where the repository defines a throttled test run (a slow-machine profile), run
+    it before the first push of a change to a test of a limit, a timeout, a queue,
+    or a clock.
 - **Isolate parallel work without hardcoding.** Derive the dev-server port and the
   test-database name deterministically from the worktree's identity (for example, a
   hash of its path), so many worktrees or checkouts run at once without collision.
@@ -989,7 +1011,9 @@ agent attention on the rest.
 11. **Tests at the right seam?** Behavior through the exported API against an
     isolated test database, not internals, and every new test fails with the
     behavior it names broken: none asserts its own mock, computes its expectation
-    with the code under test, or repeats another test ([§11](#11-testing)).
+    with the code under test, or repeats another test. Every test would still pass on
+    a machine five times slower: none reads the real clock or races it
+    ([§11](#11-testing)).
 12. **Behavior covered end to end?** Every user-observable behavior the diff adds,
     changes, or fixes appears in a `.feature` scenario written in domain language.
     Removed behavior has had its scenarios deleted, no scenario is skipped, only

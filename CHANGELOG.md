@@ -7,7 +7,7 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
-## 3.7.0 — 2026-11-18
+## 3.7.0 — 2026-11-17
 
 - Core §12.1: a change the app's suite cannot see skips it. Infrastructure as code,
   the pull-request CI's own configuration, a separately built service, and test

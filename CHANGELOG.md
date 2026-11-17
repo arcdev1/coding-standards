@@ -7,6 +7,19 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 3.7.0 — 2026-11-17
+
+- Core §12.1: a change the app's suite cannot see skips it. Infrastructure as code,
+  the pull-request CI's own configuration, a separately built service, and test
+  files alone each run a narrower push lane; the CI configuration and a service still
+  run every lane once on the mark. Unlisted paths and dependency files are
+  application code, a mixed change runs the union, and the scheduled run and the
+  release pull request ignore areas. Seen on 2257etc, where a one-line `infra/` change
+  (PR #712) billed 50 minutes and workflow-only PRs 37 to 56 each.
+- Core §12.1: batch related changes into one pull request; a note about a change goes
+  in the pull request it describes. On 2257etc, seven docs-only follow-ups and six
+  separate CI pull requests billed about 250 minutes.
+
 ## 3.6.0 — 2026-11-16
 
 - Core §12.1: a push to a deploying branch that changes only documentation, the

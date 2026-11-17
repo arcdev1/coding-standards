@@ -814,6 +814,24 @@ secret, and a deploy runs only from the branch that deploys it.
   vendored standard's version stamp, so a standards sync takes this lane) skips the
   `@smoke` scenarios and `test:e2e`; any other change runs them. Where the app serves
   those files to its users, they are not documentation for this rule.
+- **A change the app's suite cannot see skips it.** The first job outputs the areas
+  the change touches, and each later job runs when its area is touched. A repository
+  may list further areas in its CI notes, each with its paths and the reason the app
+  suite cannot see a change to them:
+
+  | The change touches only                                  | Runs                                                                                     | Skips                                    |
+  | -------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------- |
+  | infrastructure as code (`infra/`, the deploy pipeline)    | the secret scan and that infrastructure's build or lint                                  | the app gate, builds, `@smoke`, `test:e2e` |
+  | the pull-request CI's own configuration                   | the secret scan and a workflow lint on a push; every lane once, on the mark              | the app gate and `@smoke` on a push      |
+  | a separately built service (its own folder and build)     | the secret scan, the service's own build and tests, and `@smoke` on a push; every lane on the mark | nothing on the mark                      |
+  | test files alone                                          | the secret scan, format, lint, typecheck, and the tier the changed tests belong to       | production builds that tier does not need |
+
+  A path no listed area claims is application code, and so is a dependency file (the
+  lockfile, the package manifest, a Dockerfile, a migration, an environment example).
+  A change spanning areas runs the union. A repository with no list keeps the two
+  classes above. The scheduled full run and the release pull request ignore areas
+  and run everything, so a wrong list shows within a week. A service change never
+  narrows to the scenarios thought to call it: that hand-kept map goes stale silently.
 - **A push that changes nothing the app ships does not deploy.** The deploy trigger on
   a deploying branch excludes the same documentation files, plus the pull-request CI's
   own configuration, so a documentation change or a standards sync builds and deploys
@@ -836,6 +854,9 @@ secret, and a deploy runs only from the branch that deploys it.
   per merge. Push a branch when its commits are ready to be checked, not after each
   commit: every push bills a run, and a run the next push cancels still bills the
   minutes it used.
+  Batch related changes into one pull request, since every merge bills a push run
+  and a full run: a note about a change (a handoff, an ADR amendment, a roadmap line)
+  goes in the pull request it describes, never in a follow-up of its own.
   On a CI service with a single runner, make each pipeline one job, because every extra
   job waits in the queue again.
 - **Pin what CI runs.** Pin a runner image to a version, and every action or task to

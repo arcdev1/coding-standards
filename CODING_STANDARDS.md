@@ -688,7 +688,10 @@ or driver, free of business rules.
     optional field: an enlist-or-open transaction, so several calls compose
     atomically. When the module scopes rows by owner (below), that owner scope is a
     required field of a required `context`; a module with no such scope can leave
-    `context` itself optional.
+    `context` itself optional. The clock and the outside transports a service takes
+    from its `context` ([§8](#8-domain--service-layer-and-validation)) never reach a
+    data-access module: a query that compares with the time takes `now` in `query`,
+    and a stored timestamp otherwise comes from the database's own default.
   - **`query`** holds the call's own parameters, always as one named value: the
     lookup criteria (`{ email }`) or the write payload
     (`{ id, expectedVersion, input }`).
@@ -849,6 +852,34 @@ data-access layer, and owns the rules neither of them can.
 - **Stamp the owner from context, never the payload.** The input type carries no
   owner id; the service takes it from the session on `context`. A client can't
   assign ownership by editing its request.
+- **`input` is what the client sent; `context` is what the server supplies.** The
+  service validates `input` and never trusts it for identity or scope. Middleware at
+  the edge fills `context` with two kinds of thing: who is acting (the user, the
+  organization, the role), required and taken from the session; and what the service
+  may use where production and a test differ: the transaction, the clock, a random
+  source for tokens and codes a test must predict, and the outside transports (mail,
+  SMS, other services, third-party APIs). Each of the second kind is optional and
+  defaults to the real one, so existing call sites do not change.
+- **A service takes those from `context`, never by importing them.** Lint enforces it
+  with an import restriction on the named transport modules and a ban on direct
+  clock reads and `Math.random()` in service code ([§11](#11-testing)). An id from
+  `crypto.randomUUID()` or the database's default needs no injection. Add an
+  injection point only where a production and a test implementation both exist: no
+  dependency-injection container, and no rewrite; a module moves when it is next
+  changed, or in a pull request of its own when it is causing failures.
+- **Where the framework owns the call, one module with a test swap.** An auth
+  library's hook, a route handler, or a middleware receives the framework's
+  arguments and cannot be handed a `context`. A dependency used there sits behind one
+  module a test can replace, and so does a single-instance queue or buffer every
+  request shares.
+- **A rule that is a computation is a pure function.** An expiry, a state
+  transition, a limiter's arithmetic, a retention date: each takes its values,
+  `now` included, returns its result, and has unit tests. This does not mean
+  extracting every decision; a function extracted only to be tested, whose bugs then
+  live in its caller, is the wrong split.
+- **Environment and configuration are read once, at startup,** into a typed value,
+  and reach other code through `context` or as an argument, never by a read inside a
+  function.
 - **Uniqueness is a service pre-check plus a database index, never an async schema
   refine.** A check-then-insert probe is a time-of-check/time-of-use race; only the
   unique index actually enforces dedup. The pre-check exists for a friendly error;
@@ -1065,7 +1096,8 @@ export class AppError extends Error {
   another run.
   - Code that decides on time (a rate limiter, a window, a response floor, a
     deadline, a token expiry, a retry backoff) takes `now`, and a timer where it
-    waits, from its caller, with the real clock as the default at the edge. Below the
+    waits, from its caller's `context`, with the real clock as the default at the
+    edge ([§8](#8-domain--service-layer-and-validation)). Below the
     edge nothing reads the clock directly; lint direct reads (`Date.now()`, an
     argument-less `new Date()`, `performance.now()`) in service code where the
     stack's linter can, exempting the clock module and the edge.
@@ -1078,6 +1110,18 @@ export class AppError extends Error {
     trips a limit by pre-spending it or advancing the clock, never by racing it.
   - Randomness in a test is seeded, with the seed printed on failure, or drawn from
     a range no other test uses.
+  - A service test builds its `context` with one shared helper,
+    `testContext(overrides?)` in the repository's test support folder. It returns a
+    complete `context` with a test clock (`{ now(), advance(ms) }`), a seeded random
+    source, and fake transports that capture what they were sent, on the real test
+    database, so a test names only what it varies
+    (`testContext({ clock: at('2026-01-01') })`).
+  - Work started and not awaited (a mail sent after the response, an audit write)
+    goes through one register a test can drain, so a check that nothing happened
+    waits for everything that could have.
+  - Code that queues or batches has a way to hold and release its work. A test of
+    ordering or of a bound holds the queue until every request is in it, never
+    relying on concurrent requests arriving together.
   - Where the repository defines a throttled test run (a slow-machine profile), run
     it before the first push of a change to a test of a limit, a timeout, a queue,
     or a clock.
@@ -1503,9 +1547,11 @@ agent attention on the rest.
 11. **Tests at the right seam?** Behavior through the exported API against an
     isolated test database, not internals, and every new test fails with the
     behavior it names broken: none asserts its own mock, computes its expectation
-    with the code under test, or repeats another test. Every test would still pass on
-    a machine five times slower: none reads the real clock or races it
-    ([§11](#11-testing)).
+    with the code under test, or repeats another test. Every test gives the same
+    result on a machine five times slower and run thirty times: none reads the real
+    clock or races it. Nothing in the change imports a clock, a random source, or a
+    transport that `context` should supply ([§8](#8-domain--service-layer-and-validation),
+    [§11](#11-testing)).
 12. **Behavior covered end to end?** Every user-observable behavior the diff adds,
     changes, or fixes appears in a `.feature` scenario written in domain language.
     Removed behavior has had its scenarios deleted, no scenario is skipped, only

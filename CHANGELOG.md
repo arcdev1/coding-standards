@@ -19,6 +19,18 @@ wording, examples, or typo fixes with no change in what passes.
   pass on a machine five times slower. Seen on 2257etc, where three tests that passed
   on a 28-core machine failed or flaked on the 2-core runner in one week (PRs #718
   and #733), and about 15 more were found in sweeps.
+- Core §8: `input` is what the client sent, `context` what the server supplies. A
+  service takes the clock, a random source, and the outside transports from
+  `context`, each optional and defaulting to the real one, never by importing them
+  (linted); where the framework owns the call, the dependency sits behind one
+  swappable module. A rule that is a computation is a pure function, and
+  configuration is read once at startup. Core §5: a data-access `context` stays the
+  transaction and owner scope; a time comparison takes `now` in `query`.
+- Core §11: service tests build `context` with one `testContext(overrides?)` helper;
+  unawaited work goes through a register a test can drain; code that queues has a
+  way to hold and release its work. §14 asks whether a test holds over thirty runs
+  and whether anything imports what `context` should supply. Seen on 2257etc, where
+  colliding random phone numbers and unawaited mail let tests pass early or flake.
 
 ## 3.7.0 — 2026-11-17
 

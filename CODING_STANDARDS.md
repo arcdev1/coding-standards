@@ -860,6 +860,12 @@ data-access layer, and owns the rules neither of them can.
   source for tokens and codes a test must predict, and the outside transports (mail,
   SMS, other services, third-party APIs). Each of the second kind is optional and
   defaults to the real one, so existing call sites do not change.
+- **The production random source is cryptographic.** A token or a code (a sign-in
+  code, an invite token, a recovery code) is a security value, so the real source
+  draws from the platform's cryptographic generator (`crypto.getRandomValues`, or
+  `node:crypto`'s `randomBytes` and `randomInt`), never `Math.random()`. Its shape
+  fits those callers: random bytes and a bounded integer, not a float in `[0, 1)`.
+  Only a test swaps in a seeded source.
 - **A service takes those from `context`, never by importing them.** Lint enforces it
   with an import restriction on the named transport modules and a ban on direct
   clock reads and `Math.random()` in service code ([§11](#11-testing)). An id from
@@ -1110,6 +1116,12 @@ export class AppError extends Error {
     trips a limit by pre-spending it or advancing the clock, never by racing it.
   - Randomness in a test is seeded, with the seed printed on failure, or drawn from
     a range no other test uses.
+  - Where code waits (a response floor, a queue deadline, a retry backoff), the
+    repository's clock carries a timer as well as `now`:
+    `{ now(), timer(ms, fn) }`, returning a way to cancel it. The test clock runs
+    every pending timer whose time `advance(ms)` passes, in order, so a test of
+    waiting code moves the clock and never waits on real time. A repository whose
+    code never waits keeps the clock to `now` alone.
   - A service test builds its `context` with one shared helper,
     `testContext(overrides?)` in the repository's test support folder. It returns a
     complete `context` with a test clock (`{ now(), advance(ms) }`), a seeded random

@@ -7,6 +7,17 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 3.8.1 — 2026-11-18
+
+- Core §8: the production random source for a token or code is cryptographic
+  (`crypto.getRandomValues`, or `node:crypto`'s `randomBytes` and `randomInt`), shaped
+  as random bytes and a bounded integer; only a test swaps in a seeded source. The
+  v3.8.0 example in refapp drew from `Math.random()`, which a copy for a sign-in code
+  or invite token would ship as a predictable value.
+- Core §11: where code waits, the clock carries `timer(ms, fn)` beside `now`, and the
+  test clock runs pending timers as `advance(ms)` passes them. A repository whose code
+  never waits keeps `now` alone. Both raised by 2257etc while adopting v3.8.0.
+
 ## 3.8.0 — 2026-11-18
 
 - Core §11: time is a parameter, and no test depends on how fast the machine is.

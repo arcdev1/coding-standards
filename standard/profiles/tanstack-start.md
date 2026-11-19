@@ -123,6 +123,28 @@ import ordering; don't reintroduce hand-review of it. **Keep `no-use-before-defi
 off** (or set `{ functions: false }` if you enable it) so the stepdown module
 order in [§5](#5-module-organization) stays legal.
 
+One delta is required: every `<form>` submits through TanStack Form, so the
+[§0](#0-first-principle-idiomatic-stack-first) row for forms is checked by the linter rather than
+by review. Add it to the block that lints your `.tsx` files (excluding
+`src/components/ui/`, which shadcn generates):
+
+```js
+'no-restricted-syntax': [
+  'error',
+  {
+    selector:
+      "JSXOpeningElement[name.name='form']:not(:has(JSXAttribute[name.name='onSubmit'] CallExpression[callee.property.name='handleSubmit']))",
+    message:
+      'A <form> is TanStack Form: submit it with form.handleSubmit() from useForm.',
+  },
+],
+```
+
+The rule guards the submit path, not where each field's value lives: a form that
+submits through `form.handleSubmit()` but keeps its fields in `useState` passes it,
+and review still catches that. Errors a server returns after submit (a taken email)
+may live beside the form until the field is next edited; the field values may not.
+
 The five steps are package scripts:
 
 | Script      | Runs                                              |

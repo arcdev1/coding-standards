@@ -7,6 +7,14 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 3.10.0 — 2026-11-19
+
+- TanStack Start §2: a required ESLint delta, one `no-restricted-syntax` selector that
+  fails any `<form>` whose `onSubmit` doesn't reach `form.handleSubmit()`, so §0's
+  "TanStack Form, not manual `useState` form wiring" is checked by the linter. Raised
+  by refapp, where seven of eight forms had been on `useState` since August without a
+  review catching it (refapp #181, refapp-effect #12).
+
 ## 3.9.0 — 2026-11-18
 
 - TanStack Start §4 and §11.1: `src/test-support/` is a fixed home, for test-only code

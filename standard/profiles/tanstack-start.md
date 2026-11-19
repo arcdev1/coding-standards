@@ -187,6 +187,7 @@ The fixed homes for cross-cutting code:
 | `src/error/`      | `app-error` and the error middleware.                                                                                        |
 | `src/lib/`        | Cross-cutting kernels and infra with no owning slice: id, the query client, theme, the datetime kernel, the `Result` type ([§5.2](#52-return-values)). A large kernel gets its own subfolder (`lib/datetime/`), no barrel. |
 | `src/test/`       | Shared test helpers and fixtures.                                                                                            |
+| `src/test-support/` | Test-only code that ships in the server build and stays off outside tests: the shared guard and the services behind the `/api/test/` endpoints ([§11.1](#111-end-to-end-coverage)). Production code never imports it; the edge chooses a test seam such as the test clock. |
 <!-- /slot -->
 
 <!-- slot: 5 -->
@@ -532,6 +533,9 @@ playwright-bdd compiles the feature files into Playwright specs with `bddgen`.
 - **Set `reducedMotion: 'reduce'`** in the Playwright `use` block.
 - **Seeded sessions come from the auth library's own sign-in**, called from a
   test-only route under `/api/test/`, which returns the cookies the pages would set.
+- **Test-support code lives in `src/test-support/`**, not `src/test/`: it runs in the
+  built server, behind the one guard, while `src/test/` holds code only the test runner
+  loads. The route files under `src/routes/api/test/` stay thin and call into it.
 
 | Path                            | Holds                                                  |
 | ------------------------------- | ------------------------------------------------------ |

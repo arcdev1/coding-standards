@@ -7,6 +7,14 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 3.9.0 — 2026-11-18
+
+- TanStack Start §4 and §11.1: `src/test-support/` is a fixed home, for test-only code
+  that ships in the server build behind the one guard (the `/api/test/` endpoints'
+  services, the guard, the test clock). `src/test/` stays for code only the test runner
+  loads. Production code never imports test support; the edge picks the test seam.
+  Raised by refapp while building its test-support API (refapp #177).
+
 ## 3.8.1 — 2026-11-18
 
 - Core §8: the production random source for a token or code is cryptographic

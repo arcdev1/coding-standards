@@ -1168,6 +1168,29 @@ export class AppError extends Error {
   kernel's range for outgoing connections (32768 to 60999), or reserve the band
   before anything boots (`sysctl net.ipv4.ip_local_reserved_ports`); a port in that
   range can already be taken by an outgoing connection.
+- **Test databases are reclaimable, and their number is bounded.** Every database a
+  worktree or a worker creates is named by one documented scheme that a script can
+  parse back to its owner, with the app prefix, the worktree's identity, and the
+  worker index in fixed positions (for example `<app>_test[_e2e]_<worktree>[_w<N>]`).
+  A one-off database for a gate or an investigation takes a name in the same scheme,
+  never a hand-made one.
+  - The test setup prunes every family whose worktree is gone **or stale**: no longer
+    registered with git, or registered but clean with its work merged into the trunk
+    (HEAD reachable from the trunk, or its pull request merged, since a squash merge
+    leaves HEAD unreachable). Registered alone is not alive: a finished agent worktree
+    stays registered indefinitely, and its databases leak with it. A database with
+    live connections is never dropped.
+  - Cap the test runner's workers explicitly, at eight or fewer, never the runner's
+    CPU-based default. Each worker multiplies the databases a worktree leaves behind
+    and the connections the server holds, and the default on a many-core machine
+    reaches dozens of both.
+  - The in-repo prune runs only when that repository's tests run, so a shared
+    development host also runs a host-level reaper keyed on the same scheme. It is a
+    backstop for repositories nobody is testing, not a substitute for the prune.
+
+- **Set Vitest's `maxWorkers` explicitly** in `vitest.config.ts`, at eight or fewer:
+  its run-mode default is one less than the machine's cores, and each worker gets its
+  own database. Playwright's `workers` takes the same cap.
 
 ### 11.1 End-to-end coverage
 

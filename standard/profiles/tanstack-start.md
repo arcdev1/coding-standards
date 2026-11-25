@@ -538,6 +538,12 @@ export class AppError extends Error {
   sortable group to its own drag context so a drag only reorders within one group.
 <!-- /slot -->
 
+<!-- slot: 11 -->
+- **Set Vitest's `maxWorkers` explicitly** in `vitest.config.ts`, at eight or fewer:
+  its run-mode default is one less than the machine's cores, and each worker gets its
+  own database. Playwright's `workers` takes the same cap.
+<!-- /slot -->
+
 <!-- slot: 11.1 -->
 playwright-bdd compiles the feature files into Playwright specs with `bddgen`.
 

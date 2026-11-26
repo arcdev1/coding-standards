@@ -7,6 +7,14 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 3.11.0 — 2026-11-26
+
+- Core §11 and §14: no test depends on the order tests run in. Each test builds the
+  state it reads, or a `beforeEach` resets what tests change, and a `beforeAll` holds
+  only state that no test changes. The unit and integration runner shuffles test order
+  on every run and prints the seed, so a failure replays. Raised by 2257etc, where 31
+  tests in 12 integration files failed only when shuffled (2257etc #847).
+
 ## 3.10.0 — 2026-11-19
 
 - TanStack Start §2: a required ESLint delta, one `no-restricted-syntax` selector that

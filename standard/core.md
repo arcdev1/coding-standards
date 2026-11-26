@@ -678,6 +678,12 @@ machine-readable code; one global handler maps the code to an HTTP status.
   - Where the repository defines a throttled test run (a slow-machine profile), run
     it before the first push of a change to a test of a limit, a timeout, a queue,
     or a clock.
+- **No test depends on the order tests run in.** Each test builds the state it
+  reads, or a `beforeEach` resets what tests change; a `beforeAll` holds only state
+  that no test changes. The unit and integration runner shuffles test order on every
+  run and prints the seed, so a failure replays with that seed (Vitest
+  `sequence.shuffle`, pytest-randomly, JUnit `MethodOrderer.Random`). A suite that
+  passes only in file order hides tests that read another test's writes.
 - **Isolate parallel work without hardcoding.** Derive the dev-server port and the
   test-database name deterministically from the worktree's identity (for example, a
   hash of its path), so many worktrees or checkouts run at once without collision.
@@ -1069,8 +1075,10 @@ agent attention on the rest.
     behavior it names broken: none asserts its own mock, computes its expectation
     with the code under test, or repeats another test. Every test gives the same
     result on a machine five times slower and run thirty times: none reads the real
-    clock or races it. Nothing in the change imports a clock, a random source, or a
-    transport that `context` should supply ([§8](#8-domain--service-layer-and-validation),
+    clock or races it. The suite passes in shuffled order: no test reads state that
+    another test wrote, and no test changes what a `beforeAll` shares. Nothing in the
+    change imports a clock, a random source, or a transport that `context` should
+    supply ([§8](#8-domain--service-layer-and-validation),
     [§11](#11-testing)).
 12. **Behavior covered end to end?** Every user-observable behavior the diff adds,
     changes, or fixes appears in a `.feature` scenario written in domain language.

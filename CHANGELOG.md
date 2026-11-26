@@ -7,6 +7,35 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 3.13.0 — 2026-11-26
+
+- Core §12.1: the push lane is one job. It runs each check as a named step, starts
+  slow setup in the background, and reports the required check itself under a name
+  picked by the first job, with no gate job. GitHub bills each job rounded up to a
+  minute and every job repeats its setup: split push lanes billed 7 to 8 minutes for
+  2 to 3 minutes of checks, folded ones 4 to 6 (refapp #182, refapp-effect #13,
+  chaos #749). The single-runner sentence moves into this rule.
+- Core §12.1: shards build what they serve themselves unless the build costs more
+  than a job's setup plus the artifact round trip (chaos, where the bundle builds in
+  about 15 s beside the browser install, #749).
+- Core §12.1: a label other than the mark skips every job and runs in a concurrency
+  group of its own, so it starts nothing and cancels no run in flight. Before, any
+  label cancelled the push run and started the lane again (2257etc #745, chaos #749).
+- Core §12.1: mark a pull request only after its push run has passed on the head
+  commit, and remove the mark before pushing more. Four of chaos's push runs on
+  2026-11-19 were cancelled by a label added seconds after the push, after billing
+  4 minutes each. A full run may reuse a passed push run on the same merge tree
+  (2257etc ADR 0040, 2026-11-18).
+- Core §12.1: a trunk workflow fills the dependency caches. A cache saved by a GitHub
+  `pull_request` run serves only that pull request, so every first push in 2257etc
+  missed all four caches, billed 10 to 14 minutes against 9 to 10 cached, and spent
+  up to 2 min 37 s saving about 700 MB that no other pull request could read
+  (2257etc #753).
+- Core §11 and §14: a run that skips a test tier for a missing database or service
+  says so in its summary, and CI never runs in that mode. In 2257etc a plain Vitest
+  run passed with the integration suites skipped for want of a database URL (2257etc
+  #847).
+
 ## 3.12.0 — 2026-11-26
 
 - Core §11: test databases are reclaimable and bounded. Every per-worktree and

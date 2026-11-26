@@ -7,7 +7,14 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
-## 3.13.0 — 2026-11-26
+## 4.0.0 — 2026-11-26
+
+MAJOR: two rules below can fail review of a repository whose push lane is split into
+several jobs or whose mark goes on before the push run passes. To comply, fold the
+push lane's jobs into one job that reports `push-ok` (or the repository's name for
+it) itself, named by an expression from the first job, and drop its gate job; and
+add the mark only after `push-ok` is green on the head commit, removing it before
+pushing more. The other rules are additions.
 
 - Core §12.1: the push lane is one job. It runs each check as a named step, starts
   slow setup in the background, and reports the required check itself under a name

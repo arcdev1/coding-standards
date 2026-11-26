@@ -7,6 +7,17 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 3.14.0 — 2026-11-26
+
+- TanStack Start §11: Vitest's `globalSetup` creates and migrates the worker
+  databases once and hands the list to the workers with `project.provide`; the
+  per-file setup file loads only the database driver. The default test environment
+  is `node`, and a file that needs a DOM declares `// @vitest-environment jsdom`.
+  Raised by 2257etc, where Vitest 4's process per test file ran the migrating setup
+  217 times a run and started jsdom in every undeclared file. On CI the summed setup
+  time fell from 151 s to 21 s and the environment time from 67 s to 12 s (2257etc
+  #846, ADR 0034 amendment of 2026-11-26).
+
 ## 3.12.0 — 2026-11-26
 
 - Core §11: test databases are reclaimable and bounded. Every per-worktree and

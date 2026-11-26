@@ -1102,6 +1102,10 @@ export class AppError extends Error {
 - **Never mock the database or substitute an in-memory shim** (such as PGLite or
   SQLite). Run against the same engine you ship on (PostgreSQL), so tests exercise
   real constraints, types, and transactions.
+- **A run that skips a test tier says so.** A tier that skips because its database or
+  service is not configured prints the tier and the missing setting in the run's
+  summary, so a green run with the database-backed tests skipped never reads as a
+  full pass. CI configures every tier its lane runs and never runs in that mode.
 - **Assert external behavior through a module's exported API**, at the highest
   existing seam — the service for an aggregate — never private internals or the
   order of declarations inside a file. A refactor that preserves behavior must not
@@ -1408,11 +1412,23 @@ secret, and a deploy runs only from the branch that deploys it.
 | a push to a deploying branch              | build, migrate, deploy, then a smoke check of the deployed app                                                                                               | 10 min    | the rest of that deploy     |
 | a schedule on the trunk, nightly by default | the full `test:e2e`, report-only measurements such as coverage and slow suites, and a dry run of the deploy path that publishes nothing                                              | no limit  | the next release, while red |
 
-- **One required check.** The pull-request workflow ends in one job that passes only
-  when every other job passed or was skipped, and branch protection requires that job
-  alone. Adding, splitting, or sharding jobs then leaves the protection rules as they
-  are. The lanes below depend on that protection: without it a pull request can merge
-  on its push run alone, so the change that adopts the lanes also turns it on.
+- **One required check.** The pull-request workflow's required check comes from one
+  job that passes only when every check its run needed passed, and branch protection
+  requires that check alone. Adding, splitting, or sharding jobs then leaves the
+  protection rules as they are. The lanes below depend on that protection: without it
+  a pull request can merge on its push run alone, so the change that adopts the lanes
+  also turns it on.
+- **The push lane is one job.** GitHub bills each job rounded up to a whole minute,
+  and every job repeats the runner start, checkout, and install: split push lanes
+  billed 7 to 8 minutes for 2 to 3 minutes of checks, and the same lanes folded into
+  one job billed 4. On a self-hosted pool each job also takes a runner slot and waits
+  in the queue again, and on a CI service with a single runner every pipeline, the
+  deploy included, is one job. The push lane's job runs each check as a named step
+  that a failed earlier check does not stop, starts slow setup such as a browser
+  install in the background while the fast checks run, and reports the required
+  check itself, named by an expression from the first job, with no gate job after it.
+  A run adds a job only for work that runs beside it, such as a shard of the full
+  suite.
 - **The full suite runs once per merge.** A pull request is marked ready to merge by
   entering the merge queue where the CI service has one, and by a label or a manual
   trigger where it does not. The mark starts the full `test:e2e` on the head commit.
@@ -1421,12 +1437,24 @@ secret, and a deploy runs only from the branch that deploys it.
   `push-ok`), green when the push jobs passed, so the pull request waits for the
   required check without a failure on every push, and a red check always means
   something failed. Name the one job by an expression rather than splitting it in
-  two: a required job that is skipped counts as passing. Mark a pull request when its review is
-  done and no further commit is planned. An automated contributor never marks its own
-  pull request: whoever reviews it marks it. Where the full suite runs faster on a
-  developer machine than in CI, run it there before marking, so the CI run confirms a
-  result instead of finding a failure. A commit pushed after the mark needs the full
-  run again. A pull request that changes documentation alone needs no mark.
+  two: a required job that is skipped counts as passing. GitHub shows a skipped job
+  under its raw `name:` expression, which is not the required check's name; this is
+  undocumented, so check a push run's check names again after changing them. Mark a
+  pull request when its review is done, no further commit is planned, and the push
+  run has passed on its head commit: a mark added seconds after a push cancels a push
+  run that has already held a runner, and the full run repeats the push run's checks.
+  The full run may skip the checks that a passed push run ran on the same merge tree.
+  An automated contributor never marks its own pull request: whoever reviews it marks
+  it. Where the full suite runs faster on a developer machine than in CI, run it there
+  before marking, so the CI run confirms a result instead of finding a failure. While
+  the mark is on, every push runs the full suite, so remove the mark before pushing
+  more. A pull request that changes documentation alone needs no mark.
+- **A label other than the mark starts nothing and cancels nothing.** GitHub cannot
+  filter the `labeled` trigger by label name, so any label starts a run, and the pull
+  request's cancel-in-progress concurrency group then cancels the run in flight. A run
+  for any other label skips every job, by a condition on the first job that reads the
+  label's name, and runs in a concurrency group of its own (keyed by its run id). It
+  holds no runner, and the pull request keeps the checks of the run before.
 - **Decide what runs inside the workflow, never with a trigger's path filter.** A
   required check whose workflow a path filter never starts waits forever. A first job
   compares the change with its base, and later jobs skip by condition, which counts as
@@ -1461,8 +1489,17 @@ secret, and a deploy runs only from the branch that deploys it.
 - **Report-only work never runs on a pull request.** A coverage report, or any other
   measurement that cannot fail the check, runs nightly.
 - **Meet the time budget with parallel jobs, never by dropping a check.** Shard
-  `test:e2e` across runners when one runner overruns, build what the shards serve once
-  and share it, and cancel a pull request's run in progress when a new commit arrives.
+  `test:e2e` across runners when one runner overruns, and cancel a pull request's run
+  in progress when a new commit arrives. Build what the shards serve once and share it
+  only when the build costs more than a job's own setup plus the artifact upload and
+  download; otherwise each shard builds it while its browser installs.
+- **Fill the dependency caches from the trunk.** Where the CI service scopes caches by
+  branch, as GitHub does, a cache that a pull-request run saves serves only that pull
+  request, and every pull request can restore the trunk's. A trunk workflow fills the
+  caches whenever what their keys hash changes (the lockfile, the build files, the
+  workflow), on the same runner labels and architecture as the pull-request jobs so
+  the keys match. A pull request's first push then restores the caches instead of
+  downloading every dependency and saving a copy no other pull request can read.
 - **Size the scheduled full run to its cost.** Nightly is the default, and a scheduled
   run skips when the trunk has no new commit since the last one. Where a full run
   costs enough that a nightly one would rival the month's pull-request checks, run it
@@ -1477,8 +1514,6 @@ secret, and a deploy runs only from the branch that deploys it.
   Batch related changes into one pull request, since every merge bills a push run
   and a full run: a note about a change (a handoff, an ADR amendment, a roadmap line)
   goes in the pull request it describes, never in a follow-up of its own.
-  On a CI service with a single runner, make each pipeline one job, because every extra
-  job waits in the queue again.
 - **Pin what CI runs.** Pin a runner image to a version, and every action or task to
   its full commit SHA, the CI service's own included. Read tool versions from files in
   the repository (the package manager field, a version file) that CI and a developer
@@ -1623,9 +1658,9 @@ agent attention on the rest.
 11. **Tests at the right seam?** Behavior through the exported API against an
     isolated test database, not internals, and every new test fails with the
     behavior it names broken: none asserts its own mock, computes its expectation
-    with the code under test, or repeats another test. Every test gives the same
-    result on a machine five times slower and run thirty times: none reads the real
-    clock or races it. The suite passes in shuffled order: no test reads state that
+    with the code under test, or repeats another test. A tier the run skipped says so
+    in its summary. Every test gives the same result on a machine five times slower
+    and run thirty times: none reads the real clock or races it. The suite passes in shuffled order: no test reads state that
     another test wrote, and no test changes what a `beforeAll` shares. Nothing in the
     change imports a clock, a random source, or a transport that `context` should
     supply ([§8](#8-domain--service-layer-and-validation),
@@ -1642,8 +1677,9 @@ agent attention on the rest.
     ([§11.1](#111-end-to-end-coverage)).
 13. **CI and secrets?** No secret reaches the CI that runs pull-request checks, no
     report-only work runs on a pull request, no path filter starts a required check,
-    the full `test:e2e` runs once per merge behind the one aggregate check that branch
-    protection requires, and every action and runner image is pinned. A new deploy
+    the full `test:e2e` runs once per merge behind the one check that branch
+    protection requires, and every action and runner image is pinned. The push lane is
+    one job, another label runs nothing, and the trunk fills the caches. A new deploy
     secret sits in a store with a branch check and is read only by the branch that deploys
     ([§12.1](#121-continuous-integration-and-deploys)).
 14. **TanStack specifics?** Secret-holding leaf modules carry Start's `server-only`

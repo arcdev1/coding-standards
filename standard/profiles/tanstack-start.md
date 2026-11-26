@@ -542,6 +542,15 @@ export class AppError extends Error {
 - **Set Vitest's `maxWorkers` explicitly** in `vitest.config.ts`, at eight or fewer:
   its run-mode default is one less than the machine's cores, and each worker gets its
   own database. Playwright's `workers` takes the same cap.
+- **Migrate the worker databases once, in Vitest's `globalSetup`.** It creates and
+  migrates the databases for worker ids 1 to `maxWorkers` and hands the list to the
+  workers with `project.provide`, read back with `inject`. Vitest 4 starts a process
+  for every test file, so a setup file (`setupFiles`) runs once per file: it loads
+  only the database driver and the per-file work, and migrates a database only when
+  the list lacks it.
+- **The default test environment is `node`.** A test file that needs a DOM declares
+  `// @vitest-environment jsdom` on its first line, and one that lacks it fails on
+  its first run.
 <!-- /slot -->
 
 <!-- slot: 11.1 -->

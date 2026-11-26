@@ -7,6 +7,18 @@ change, with the commit tagged `v<version>`. `MAJOR` = a rule changed or was rem
 in a way that could fail existing code review; `MINOR` = a rule added; `PATCH` =
 wording, examples, or typo fixes with no change in what passes.
 
+## 3.12.0 — 2026-11-26
+
+- Core §11: test databases are reclaimable and bounded. Every per-worktree and
+  per-worker database follows one documented, parseable naming scheme; the in-repo
+  prune treats a clean worktree merged into the trunk as stale, not only one git no
+  longer lists; the test runner's workers are capped at eight or fewer; and a
+  host-level reaper on the same scheme is the backstop. TanStack Start §11 sets
+  Vitest's `maxWorkers` and Playwright's `workers` to that cap. Raised by a shared
+  development host that had accumulated about 900 test databases: every repo had
+  copied a prune keyed only on `git worktree list`, finished agent worktrees stay
+  registered, and Vitest's default ran 27 workers per worktree.
+
 ## 3.11.0 — 2026-11-26
 
 - Core §11 and §14: no test depends on the order tests run in. Each test builds the
